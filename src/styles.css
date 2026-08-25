@@ -49,8 +49,19 @@ body {
 
 .app {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   height: 100%;
+}
+
+/* 目次と用紙を横に並べる */
+.workspace {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+.workspace > .viewport {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* ---------- ツールバー ---------- */
@@ -188,6 +199,91 @@ button.toggle.is-on {
   background-color: rgba(255, 140, 0, 0.75);
 }
 
+/* ---------- 目次 ---------- */
+.outline {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-panel);
+  border-right: 1px solid var(--ui-border);
+  overflow-y: auto;
+  min-height: 0;
+}
+.outline[hidden] {
+  display: none;
+}
+.outline-head {
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--ui-sub);
+  border-bottom: 1px solid var(--ui-border);
+  position: sticky;
+  top: 0;
+  background: var(--ui-panel);
+}
+.outline-head button {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+  color: var(--ui-sub);
+}
+.outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  flex: 1 1 auto;
+}
+.outline-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.outline-list li:hover {
+  background: #eef1f6;
+}
+.outline-list li.is-current {
+  background: #e2e9f5;
+}
+.outline-list .title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outline-list .chars {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ui-sub);
+  font-variant-numeric: tabular-nums;
+}
+.outline-list .lv2 { padding-left: 26px; font-size: 12.5px; }
+.outline-list .lv3 { padding-left: 40px; font-size: 12px; }
+.outline-list .lv4,
+.outline-list .lv5,
+.outline-list .lv6 { padding-left: 54px; font-size: 12px; }
+.outline-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--ui-sub);
+}
+.outline-hint {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--ui-sub);
+  border-top: 1px solid var(--ui-border);
+  line-height: 1.6;
+}
+
 /* ---------- 用紙 ---------- */
 .viewport {
   overflow-x: auto;
@@ -230,6 +326,16 @@ button.toggle.is-on {
    U+3000 は CSS の空白折り畳みの対象外なので 1 マスとして残る */
 .paper p {
   margin: 0;
+}
+
+/* 見出し行。
+   文字サイズを変えるとマス目から外れてしまうので、色だけで示す。
+   太字も字送りが変わる書体があるため使わない。 */
+.paper p[data-heading] {
+  color: #1a3a6b;
+}
+.paper p[data-heading="1"] {
+  color: #8a2a1a;
 }
 
 /* 空段落が潰れないように 1 行ぶんの幅を持たせる。

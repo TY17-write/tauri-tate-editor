@@ -9,6 +9,8 @@
 import { Session } from "./editor/session";
 import { MarkerLayer } from "./editor/marker";
 import { SearchLayer } from "./editor/search";
+import { bodyChars, buildOutline, parseHeading } from "./editor/outline";
+import type { Heading } from "./editor/outline";
 import { VerticalScroller } from "./editor/scroll";
 import {
   DEFAULT_LAYOUT,
@@ -32,6 +34,11 @@ import {
 import type { Layout, MarkStyle, PosTag } from "./editor/types";
 
 const SAMPLE = [
+  // 見出し記号は全角。半角の # だと、その行だけ升からずれる
+  "＃第一章　雪の夜",
+  "",
+  "＃＃一　硝子戸",
+  "",
   "　夜半の風が硝子戸を鳴らしていた。まだ午前二時、原稿はわずか十二枚しか進んでいない。",
   "　わたしはふと顔を上げた。しばらくのあいだ、その音に耳を澄ませていた。とても静かな夜だった。ずいぶん長く、同じ行を書いては消していたように思う。",
   "　「まだ起きていたのか」",
@@ -42,6 +49,9 @@ const SAMPLE = [
   "　「雪だな」",
   "　「そうですね」",
   "　やがて雪は激しくなり、庭木の輪郭を静かに消していった。とても長い夜だ――と、わたしは思った。",
+  "",
+  "＃＃二　万年筆",
+  "",
   "　わたしは決してあきらめないと決めていた。けれど、その決意はひどく脆く、かすかな物音にさえ揺らいでしまう。",
   "　窓辺の空気は冷たく、指先の感覚が鈍くなっていく。それでもわたしは、ゆっくりと万年筆を握り直した。",
 ].join("\n");
@@ -100,8 +110,9 @@ const scroller = new VerticalScroller(viewport, () => layout.lines * layout.step
 
 /* ---------- ステータス ---------- */
 function updateStatus(): void {
-  const text = session.text();
-  const chars = text.replace(/\n/g, "").length;
+  const lines = session.text().split("\n");
+  // 見出し行は分量に数えない。原稿の実量はこちらが近い
+  const chars = bodyChars(lines);
   const perPage = charsPerPage(layout);
   statusCount.textContent = `${chars.toLocaleString()} 字　${(chars / 400).toFixed(1)} 枚`;
   statusPage.textContent = `${perPage} 字/ページ　全 ${Math.max(1, Math.ceil(chars / perPage))} ページ`;
@@ -109,10 +120,14 @@ function updateStatus(): void {
     ? `マーカー ${session.marker.lastCount}`
     : "マーカー非対応";
 
+  const text = lines.join("\n");
   const n = countNormalizable(text);
   const btn = $<HTMLButtonElement>("btnNormalize");
   btn.textContent = n ? `正規化 (${n})` : "正規化";
   btn.disabled = n === 0;
+
+  markHeadings(lines);
+  renderOutline(lines);
 }
 
 /* ---------- 組版設定 ---------- */
@@ -335,6 +350,92 @@ window.addEventListener("beforeunload", (e) => {
   e.preventDefault();
 });
 
+/* ---------- 目次 ---------- */
+const outline = $<HTMLElement>("outline");
+const outlineList = $<HTMLElement>("outlineList");
+let headings: Heading[] = [];
+
+/**
+ * 見出し行に印を付ける。
+ *
+ * 本文そのものには触らない。textContent を変えるとモデル側と
+ * 食い違い、マーカーの位置がずれる。属性だけを足す。
+ */
+function markHeadings(lines: string[]): void {
+  const els = Array.from(paper.children) as HTMLElement[];
+  els.forEach((el, i) => {
+    const h = lines[i] !== undefined ? parseHeading(lines[i]) : null;
+    if (h) el.dataset.heading = String(h.level);
+    else delete el.dataset.heading;
+  });
+}
+
+function renderOutline(lines: string[]): void {
+  headings = buildOutline(lines);
+  if (outline.hidden) return;
+
+  outlineList.replaceChildren();
+  if (headings.length === 0) {
+    const li = document.createElement("li");
+    li.className = "outline-empty";
+    li.textContent = "見出しがありません";
+    outlineList.appendChild(li);
+    return;
+  }
+
+  for (const h of headings) {
+    const li = document.createElement("li");
+    li.className = `lv${h.level}`;
+    li.dataset.index = String(h.index);
+
+    const title = document.createElement("span");
+    title.className = "title";
+    title.textContent = h.title;
+    title.title = h.title;
+
+    const chars = document.createElement("span");
+    chars.className = "chars";
+    chars.textContent = `${h.chars.toLocaleString()} 字`;
+
+    li.append(title, chars);
+    li.addEventListener("click", () => jumpToParagraph(h.index));
+    outlineList.appendChild(li);
+  }
+}
+
+/** 指定した段落へスクロールし、行頭にキャレットを置く。 */
+function jumpToParagraph(index: number): void {
+  const el = paper.children[index] as HTMLElement | undefined;
+  if (!el) return;
+  scroller.reveal(el.getBoundingClientRect());
+
+  const node = el.firstChild;
+  const range = document.createRange();
+  if (node && node.nodeType === Node.TEXT_NODE) range.setStart(node, 0);
+  else range.setStart(el, 0);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  paper.focus();
+
+  for (const li of Array.from(outlineList.children)) {
+    li.classList.toggle("is-current", (li as HTMLElement).dataset.index === String(index));
+  }
+}
+
+function toggleOutline(show?: boolean): void {
+  const next = show ?? outline.hidden;
+  outline.hidden = !next;
+  if (next) renderOutline(session.text().split("\n"));
+  // 幅が変わるので、用紙の大きさとスクロール量を測り直す
+  fitCellToViewport();
+  scroller.calibrate();
+}
+
+$<HTMLButtonElement>("btnOutline").addEventListener("click", () => toggleOutline());
+$<HTMLButtonElement>("outlineClose").addEventListener("click", () => toggleOutline(false));
+
 /* ---------- 検索と置換 ---------- */
 const findbar = $<HTMLElement>("findbar");
 const findQuery = $<HTMLInputElement>("findQuery");
@@ -469,6 +570,11 @@ window.addEventListener("keydown", (e) => {
       e.preventDefault();
       openFind();
       findReplace.focus();
+      return;
+    }
+    if (k === "g") {
+      e.preventDefault();
+      toggleOutline();
       return;
     }
   }

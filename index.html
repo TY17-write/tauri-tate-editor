@@ -18,6 +18,7 @@
             <button id="btnSave" type="button" title="Ctrl+S">保存</button>
             <button id="btnSaveAs" type="button" title="Ctrl+Shift+S">名前を付けて</button>
             <button id="btnFind" type="button" title="Ctrl+F">検索</button>
+            <button id="btnOutline" type="button" title="Ctrl+G">目次</button>
           </div>
         </div>
         <div class="ctl">
@@ -114,14 +115,29 @@
         <button id="findClose" type="button" class="find-close" title="Esc">×</button>
       </div>
 
-      <main class="viewport" id="viewport">
-        <div
-          class="paper grid-full"
-          id="paper"
-          contenteditable="plaintext-only"
-          spellcheck="false"
-        ></div>
-      </main>
+      <div class="workspace">
+        <aside class="outline" id="outline" hidden>
+          <div class="outline-head">
+            <span>目次</span>
+            <button id="outlineClose" type="button" title="閉じる">×</button>
+          </div>
+          <ul class="outline-list" id="outlineList"></ul>
+          <p class="outline-hint">
+            行頭に <code>＃</code> を置くと見出しになります。<br />
+            数を増やすと下の階層になります。<br />
+            半角の <code>#</code> でも認識しますが、その行だけ升からずれます。
+          </p>
+        </aside>
+
+        <main class="viewport" id="viewport">
+          <div
+            class="paper grid-full"
+            id="paper"
+            contenteditable="plaintext-only"
+            spellcheck="false"
+          ></div>
+        </main>
+      </div>
 
       <footer class="statusbar">
         <span id="status-file">新規</span>
