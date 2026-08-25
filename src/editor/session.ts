@@ -23,6 +23,9 @@ import type { AnalyzeResult, ParaId, ParaView } from "./types";
 /** 入力が止まってから解析を投げるまでの待ち時間(ms)。 */
 const DEBOUNCE_MS = 250;
 
+/** 本文の不一致を検知したときに、構造を直して再挑戦する回数の上限。 */
+const MISMATCH_RETRY_LIMIT = 3;
+
 export interface SessionEvents {
   onStatus?: (msg: string, isError?: boolean) => void;
   onSynced?: () => void;
@@ -36,6 +39,8 @@ export class Session {
   private dirty = false;
   /** 直近に Rust へ送った本文。無変化なら送らない。null はまだ一度も送っていない状態 */
   private lastSent: string | null = null;
+  /** 本文の不一致が続いている回数 */
+  private mismatchRetries = 0;
 
   constructor(
     private readonly paper: HTMLElement,
@@ -169,10 +174,28 @@ export class Session {
       // 過去にゼロ幅スペースの混入で実際に起きたので、常時見張る。
       const mismatch = this.verify(views);
       if (mismatch) {
-        this.events.onStatus?.(`本文の不一致: ${mismatch}`, true);
         this.marker.clear();
+        // lastSent はすでに更新されているので、このまま戻ると
+        // 次回「変化なし」と判断され、マーカーが二度と復活しない。
+        // 送信済みの記録を捨てて、構造を直したうえでやり直す。
+        // 直らないまま繰り返しても仕方がないので回数で打ち切る。
+        this.lastSent = null;
+        this.mismatchRetries += 1;
+        if (this.mismatchRetries <= MISMATCH_RETRY_LIMIT) {
+          this.events.onStatus?.(`本文の不一致を修復中: ${mismatch}`);
+          // 本文を読み直して組み立て直す。readText は段落を \n で繋ぎ、
+          // writeText はそれを \n で割るので、段落内に残っていた
+          // 生の改行がここで確実に段落の切れ目になる。
+          const caret = caretOffset(this.paper);
+          writeText(this.paper, readText(this.paper));
+          if (caret !== null) setCaretOffset(this.paper, caret);
+          this.schedule();
+        } else {
+          this.events.onStatus?.(`本文の不一致が直りません: ${mismatch}`, true);
+        }
         return;
       }
+      this.mismatchRetries = 0;
 
       const results = await invoke<AnalyzeResult[]>("analyze_pending");
       this.applyMarks(results);

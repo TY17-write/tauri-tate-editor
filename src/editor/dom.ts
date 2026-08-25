@@ -42,7 +42,8 @@ export function readText(paper: HTMLElement): string {
 /** 本文を丸ごと差し替える。キャレットは保持しない。 */
 export function writeText(paper: HTMLElement, text: string): void {
   const frag = document.createDocumentFragment();
-  for (const line of text.split("\n")) frag.appendChild(createPara(line));
+  // CRLF や CR で渡されても段落に割れるようにしておく
+  for (const line of text.split(NEWLINE_G)) frag.appendChild(createPara(line));
   paper.replaceChildren(frag);
 }
 
@@ -129,13 +130,23 @@ export function setCaretOffset(paper: HTMLElement, offset: number): void {
  * 判定され、修復と再描画を延々と繰り返すことになる。
  */
 function isCleanChild(n: Node): boolean {
-  if (n.nodeType === Node.TEXT_NODE) return true;
+  if (n.nodeType === Node.TEXT_NODE) {
+    // 生の改行がテキストノードに残っていてはいけない。
+    // 段落は <p> で表すのが約束で、readText はそれを \n で繋ぐ。
+    // 文字として \n が混ざると、モデル側で段落が余分に割れて
+    // DOM と段落数が食い違う。
+    return !NEWLINE.test(n.nodeValue ?? "");
+  }
   return (
     n.nodeType === Node.ELEMENT_NODE &&
     (n as Element).tagName === "SPAN" &&
     (n as Element).classList.contains("sidemark")
   );
 }
+
+/** 改行の表記ゆれ。ペーストや読み込みで CRLF や CR が入ることがある。 */
+const NEWLINE = /\r\n|\r|\n/;
+const NEWLINE_G = /\r\n|\r|\n/g;
 
 /** すべての子が <p> で、その中身がテキストか sidemark の span だけか。 */
 export function isStructureClean(paper: HTMLElement): boolean {
@@ -166,11 +177,20 @@ export function normalizeStructure(paper: HTMLElement): boolean {
   const caret = caretOffset(paper);
 
   const lines: string[] = [];
+
+  // テキストに残った生の改行はここで段落に割る。
+  // textContent は <br> を無視する一方 \n はそのまま残すので、
+  // 割らずに積むと 1 つの <p> が複数行を抱えたままになり、
+  // モデル側の段落数と食い違う。
+  const push = (s: string): void => {
+    for (const line of s.split(NEWLINE_G)) lines.push(line);
+  };
+
   for (const node of Array.from(paper.childNodes)) {
     if (node.nodeType === Node.TEXT_NODE) {
-      // <p> の外に投げ出された裸のテキスト。1段落として拾う
+      // <p> の外に投げ出された裸のテキスト
       const t = node.nodeValue ?? "";
-      if (t.length) lines.push(t);
+      if (t.length) push(t);
       continue;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -180,9 +200,9 @@ export function normalizeStructure(paper: HTMLElement): boolean {
       lines.push("");
       continue;
     }
-    // <p> でも <div> でも、中身のテキストを1段落とする。
+    // <p> でも <div> でも、中身のテキストを段落にする。
     // 段落内の <br> は textContent が無視するので改行にならない。
-    lines.push(el.textContent ?? "");
+    push(el.textContent ?? "");
   }
 
   const frag = document.createDocumentFragment();
