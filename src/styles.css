@@ -409,6 +409,10 @@ button.toggle.is-on {
 .report-list li:hover {
   background: #eef1f6;
 }
+.report-list li.is-current {
+  background: #fdeceb;
+  box-shadow: inset 3px 0 0 #c0392b;
+}
 .report-list .kind {
   display: inline-block;
   font-size: 10px;

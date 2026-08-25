@@ -111,8 +111,9 @@ const session = new Session(paper, {
   },
   onEdit: () => {
     markDirty();
-    // 本文が変わるとヒットの位置がずれるので、検索し直す
+    // 本文が変わると位置がずれるので、検索し直して指摘の強調は解く
     if (!findbar.hidden) scheduleFind();
+    clearIssueHighlight();
   },
   onElementReplaced: (el) => {
     paper = el;
@@ -587,14 +588,41 @@ function renderIssues(r: StyleReport): void {
     const ex = document.createElement("span");
     ex.className = "excerpt";
     ex.textContent = issue.excerpt;
+    li.title = "クリックでその箇所へ。もう一度押すか Esc で強調を解きます";
     li.append(kind, msg, ex);
-    li.addEventListener("click", () => jumpToIssue(issue));
+    li.addEventListener("click", () => jumpToIssue(issue, li));
     reportList.appendChild(li);
   }
 }
 
-/** 指摘箇所へ飛んで強調する。 */
-function jumpToIssue(issue: Issue): void {
+/** いま強調している指摘の行。強調を解くときに使う */
+let currentIssueEl: HTMLElement | null = null;
+
+/** 指摘の強調が出ているか。 */
+function hasIssueHighlight(): boolean {
+  if (currentIssueEl) return true;
+  return MarkerLayer.supported && CSS.highlights.has("issue-current");
+}
+
+/** 指摘の強調を解く。 */
+function clearIssueHighlight(): void {
+  if (!hasIssueHighlight()) return;
+  if (MarkerLayer.supported) CSS.highlights.delete("issue-current");
+  currentIssueEl?.classList.remove("is-current");
+  currentIssueEl = null;
+}
+
+/**
+ * 指摘箇所へ飛んで強調する。
+ * すでに同じ指摘を選んでいたら強調を解く（押すたびに切り替わる）。
+ */
+function jumpToIssue(issue: Issue, li: HTMLElement): void {
+  if (currentIssueEl === li) {
+    clearIssueHighlight();
+    return;
+  }
+  clearIssueHighlight();
+
   const el = paper.children[issue.para] as HTMLElement | undefined;
   if (!el) return;
   const node = el.firstChild;
@@ -616,11 +644,23 @@ function jumpToIssue(issue: Issue): void {
   const sel = window.getSelection();
   sel?.removeAllRanges();
   sel?.addRange(range);
+
+  li.classList.add("is-current");
+  currentIssueEl = li;
 }
+
+// 本文に触れたら強調を解く。
+// paper は undo 履歴を捨てるときに作り直されるので、
+// 要素に直接ではなく document で受けて中身かどうかで判定する。
+document.addEventListener("pointerdown", (e) => {
+  if (paper.contains(e.target as Node)) clearIssueHighlight();
+});
 
 async function refreshReport(): Promise<void> {
   if (report.hidden) return;
   try {
+    // 一覧を作り直すと、強調していた行が DOM から外れる
+    clearIssueHighlight();
     reportList.replaceChildren();
     const li = document.createElement("li");
     li.className = "report-empty";
@@ -644,7 +684,7 @@ function toggleReport(show?: boolean): void {
   const next = show ?? report.hidden;
   report.hidden = !next;
   if (next) void refreshReport();
-  else if (MarkerLayer.supported) CSS.highlights.delete("issue-current");
+  else clearIssueHighlight();
   fitCellToViewport();
   scroller.calibrate();
 }
@@ -807,10 +847,18 @@ window.addEventListener("keydown", (e) => {
     stepFind(e.shiftKey ? -1 : 1);
     return;
   }
-  if (e.key === "Escape" && !findbar.hidden) {
-    e.preventDefault();
-    closeFind();
-    return;
+  if (e.key === "Escape") {
+    // 検索バーが開いていればそちらを優先し、次の Esc で強調を解く
+    if (!findbar.hidden) {
+      e.preventDefault();
+      closeFind();
+      return;
+    }
+    if (hasIssueHighlight()) {
+      e.preventDefault();
+      clearIssueHighlight();
+      return;
+    }
   }
 
   if (e.target === paper) return;
