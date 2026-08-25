@@ -1,0 +1,68 @@
+name: リリース
+
+# v1.0.0 のようなタグを押すとインストーラを作る。
+# 手元でリリースビルドをしなくて済むので、target/release のぶんの
+# ディスクを使わずに配布物を用意できる。
+on:
+  push:
+    tags:
+      - "v*"
+  # 試しに走らせたいときは画面から実行できるようにしておく
+  workflow_dispatch:
+
+# tauri-action がリリースを作るために要る
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: ソースを取得
+        uses: actions/checkout@v4
+
+      - name: Node を用意
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Rust を用意
+        uses: dtolnay/rust-toolchain@stable
+
+      # UniDic を実行ファイルに埋め込むので、依存のビルドが非常に重い。
+      # キャッシュがないと毎回 15 分以上かかる。
+      - name: Rust のビルド結果を使い回す
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          # 依存だけを対象にする。自前のコードは毎回作り直す
+          cache-targets: "false"
+
+      - name: npm の依存を入れる
+        run: npm ci
+
+      - name: 型を確かめる
+        run: npx tsc --noEmit
+
+      - name: Rust のテスト
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - name: インストーラを作ってリリースに載せる
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 縦書きエディタ ${{ github.ref_name }}
+          releaseBody: |
+            形態素解析による文体マーカーつきの縦書き小説エディタです。
+
+            `.msi` または `.exe` をダウンロードしてお使いください。
+            Microsoft Edge WebView2 ランタイムが必要です（Windows 11 と
+            最近の Windows 10 には最初から入っています）。
+          # 中身を確かめてから公開できるよう、下書きとして作る
+          releaseDraft: true
+          prerelease: false

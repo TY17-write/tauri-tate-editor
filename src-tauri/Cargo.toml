@@ -14,6 +14,13 @@ edition = "2021"
 name = "tauri_tate_editor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# UniDic を実行ファイルに埋め込むためビルド成果物が非常に大きい
+# （debug で 9 GB 前後）。増分ビルドの中間ファイルがさらに 2 GB ほど
+# 積み上がり、ディスクが逼迫してビルドが失敗したため切っている。
+# 一度に作り直すぶん多少遅くなるが、容量のほうが問題になりやすい。
+[profile.dev]
+incremental = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -1,0 +1,61 @@
+name: 検査
+
+# 押すたびにテストと型チェックを回す。
+# インストーラは作らないので、リリースより軽く速い。
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: windows-latest
+
+    steps:
+      - name: ソースを取得
+        uses: actions/checkout@v4
+
+      - name: Node を用意
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Rust を用意
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # UniDic の埋め込みで依存のビルドが重いので、必ず使い回す
+      - name: Rust のビルド結果を使い回す
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          cache-targets: "false"
+
+      - name: npm の依存を入れる
+        run: npm ci
+
+      - name: 型を確かめる
+        run: npx tsc --noEmit
+
+      - name: フロントエンドを組み立てる
+        run: npx vite build
+
+      - name: Rust の書式
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Rust のテスト
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      # 指摘は目安として出すだけにする。ここで落とすと、手元で
+      # 確かめにくい理由（ディスクが足りず clippy を回せない等）で
+      # 検査全体が止まってしまう
+      - name: Rust の指摘
+        working-directory: src-tauri
+        run: cargo clippy --lib
+        continue-on-error: true

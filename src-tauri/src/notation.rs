@@ -53,14 +53,17 @@ impl Notation {
 pub enum Node {
     Text(String),
     /// ルビ。base に親文字、ruby に読み
-    Ruby { base: String, ruby: String },
+    Ruby {
+        base: String,
+        ruby: String,
+    },
     /// 傍点
     Emphasis(String),
 }
 
 /* ============================================================
-   記法ごとの読み取り
-   ============================================================ */
+記法ごとの読み取り
+============================================================ */
 
 /// 縦棒つきのルビ。半角 `|` と全角 `｜` の両方を受ける。
 static RE_BAR_RUBY: Lazy<Regex> =
@@ -149,8 +152,8 @@ where
 }
 
 /* ============================================================
-   記法ごとの書き出し
-   ============================================================ */
+記法ごとの書き出し
+============================================================ */
 
 /// 分解したものを、指定の記法の文字列に戻す。
 pub fn render_line(nodes: &[Node], to: Notation) -> String {
@@ -216,8 +219,8 @@ pub fn count(text: &str, notation: Notation) -> NotationCount {
 }
 
 /* ============================================================
-   表示用
-   ============================================================ */
+表示用
+============================================================ */
 
 /// プレビュー用に組み立てた一行。
 ///
@@ -356,7 +359,11 @@ mod tests {
 
     #[test]
     fn なろうからカクヨムへ変える() {
-        let got = convert("|硝子戸《ガラスど》を見た", Notation::Narou, Notation::Kakuyomu);
+        let got = convert(
+            "|硝子戸《ガラスど》を見た",
+            Notation::Narou,
+            Notation::Kakuyomu,
+        );
         assert_eq!(got, "|硝子戸《ガラスど》を見た");
     }
 
@@ -405,7 +412,10 @@ mod tests {
 
     #[test]
     fn 表示用の部品に分ける() {
-        let ps = pieces("彼は|硝子戸《ガラスど》を《《じっと》》見た", Notation::Kakuyomu);
+        let ps = pieces(
+            "彼は|硝子戸《ガラスど》を《《じっと》》見た",
+            Notation::Kakuyomu,
+        );
         let kinds: Vec<&str> = ps.iter().map(|p| p.kind).collect();
         assert_eq!(kinds, vec!["text", "ruby", "text", "emphasis", "text"]);
 

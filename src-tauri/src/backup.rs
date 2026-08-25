@@ -94,9 +94,6 @@ mod tests {
     #[test]
     fn 自動保存のパスは隣に作られる() {
         let p = Path::new("C:/work/原稿.txt");
-        assert_eq!(
-            autosave_path(p).file_name().unwrap(),
-            "原稿.txt.autosave"
-        );
+        assert_eq!(autosave_path(p).file_name().unwrap(), "原稿.txt.autosave");
     }
 }

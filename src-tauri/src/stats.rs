@@ -88,7 +88,15 @@ impl Default for StyleOptions {
             nearby_window: 60,
             // 小説の推敲でよく槍玉に挙がる語
             overuse_words: [
-                "思う", "思った", "感じる", "ような", "そう", "という", "こと", "もの", "とても",
+                "思う",
+                "思った",
+                "感じる",
+                "ような",
+                "そう",
+                "という",
+                "こと",
+                "もの",
+                "とても",
                 "少し",
             ]
             .iter()
@@ -157,7 +165,10 @@ fn ending_of(sentence: &str) -> String {
 
 /// 文字単位の位置を UTF-16 単位に直す。
 fn char_to_utf16(text: &str, char_idx: usize) -> u32 {
-    text.chars().take(char_idx).map(|c| c.len_utf16() as u32).sum()
+    text.chars()
+        .take(char_idx)
+        .map(|c| c.len_utf16() as u32)
+        .sum()
 }
 
 /// 抜粋を作る。長い場合は省略する。
@@ -312,7 +323,10 @@ fn detect_nearby_repeat(
                 para: pi,
                 start: m.start,
                 end: m.end,
-                message: format!("「{word}」が {} 字のあいだに繰り返されています", m.start - prev),
+                message: format!(
+                    "「{word}」が {} 字のあいだに繰り返されています",
+                    m.start - prev
+                ),
                 excerpt: word.clone(),
             });
         }
@@ -384,7 +398,12 @@ mod tests {
             .collect();
         assert_eq!(
             got,
-            vec!["短い文。", "長めの文だった。", "「会話です。」", "そして続く"]
+            vec![
+                "短い文。",
+                "長めの文だった。",
+                "「会話です。」",
+                "そして続く"
+            ]
         );
     }
 
@@ -507,8 +526,10 @@ mod tests {
         let paras: Vec<ParaInput<'_>> = lines.iter().map(|l| input(l, &[])).collect();
         let r = analyze(&paras, &StyleOptions::default());
 
-        println!("本文 {} 字 / {} 文 / 平均 {:.1} 字 / 最長 {} 字",
-                 r.chars, r.sentences, r.avg_sentence, r.max_sentence);
+        println!(
+            "本文 {} 字 / {} 文 / 平均 {:.1} 字 / 最長 {} 字",
+            r.chars, r.sentences, r.avg_sentence, r.max_sentence
+        );
         println!("会話の割合 {:.0}%", r.dialogue_ratio * 100.0);
         println!("指摘 {} 件", r.issues.len());
         for i in &r.issues {
