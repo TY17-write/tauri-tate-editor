@@ -19,6 +19,15 @@ import {
   isGridSafeFont,
   normalizeText,
 } from "./editor/grid";
+import {
+  autosave,
+  baseName,
+  currentPath,
+  openWithDialog,
+  saveToCurrent,
+  saveWithDialog,
+  takeAutosave,
+} from "./editor/files";
 import type { Layout, MarkStyle, PosTag } from "./editor/types";
 
 const SAMPLE = [
@@ -220,8 +229,112 @@ $<HTMLButtonElement>("btnNormalize").addEventListener("click", () => {
   void session.setText(normalizeText(session.text()));
 });
 
+/* ---------- ファイル ---------- */
+const statusFile = $<HTMLElement>("status-file");
+
+/** 保存されていない変更があるか。ウィンドウを閉じる前の確認に使う。 */
+let dirty = false;
+
+function setStatusFile(path: string | null): void {
+  statusFile.textContent = path ? baseName(path) : "新規";
+  statusFile.title = path ?? "";
+}
+
+function markDirty(): void {
+  if (dirty) return;
+  dirty = true;
+  if (!statusFile.textContent?.endsWith(" *")) {
+    statusFile.textContent = `${statusFile.textContent} *`;
+  }
+}
+
+async function doOpen(): Promise<void> {
+  try {
+    const loaded = await openWithDialog();
+    if (!loaded) return;
+
+    // 前回の自動保存が残っていれば、そちらを使うか尋ねる
+    const rescued = await takeAutosave(loaded.path);
+    let text = loaded.text;
+    if (rescued !== null && rescued !== loaded.text) {
+      const useIt = window.confirm(
+        "前回の自動保存が残っています。保存されずに終了した可能性があります。\n" +
+          "自動保存の内容を読み込みますか？（いいえ＝ファイルの内容を読み込む）",
+      );
+      if (useIt) text = rescued;
+    }
+
+    await session.setText(text);
+    setStatusFile(loaded.path);
+    dirty = false;
+    statusMsg.textContent = `${baseName(loaded.path)} を開きました（${loaded.encoding}）`;
+    statusMsg.classList.remove("err");
+    scroller.toHead();
+  } catch (err) {
+    statusMsg.textContent = `開けません: ${String(err)}`;
+    statusMsg.classList.add("err");
+  }
+}
+
+async function doSave(forceDialog: boolean): Promise<void> {
+  try {
+    const text = session.text();
+    const res = forceDialog ? await saveWithDialog(text) : await saveToCurrent(text);
+    if (!res) {
+      // 保存先が未定なら、名前を付けて保存に回す
+      if (!forceDialog) return doSave(true);
+      return;
+    }
+    setStatusFile(res.path);
+    dirty = false;
+    statusMsg.textContent = `${baseName(res.path)} に保存しました`;
+    statusMsg.classList.remove("err");
+  } catch (err) {
+    statusMsg.textContent = `保存できません: ${String(err)}`;
+    statusMsg.classList.add("err");
+  }
+}
+
+$<HTMLButtonElement>("btnOpen").addEventListener("click", () => void doOpen());
+$<HTMLButtonElement>("btnSave").addEventListener("click", () => void doSave(false));
+$<HTMLButtonElement>("btnSaveAs").addEventListener("click", () => void doSave(true));
+
+/* 自動保存。開いているファイルの隣に .autosave を置く。
+   保存先が未定の新規原稿では何も起きない（Rust 側で null を返す）。 */
+const AUTOSAVE_MS = 60_000;
+window.setInterval(() => {
+  if (!dirty) return;
+  void autosave(session.text())
+    .then((path) => {
+      if (path) statusMsg.textContent = `自動保存しました（${new Date().toLocaleTimeString()}）`;
+    })
+    .catch(() => {
+      /* 自動保存の失敗は本作業を邪魔しない */
+    });
+}, AUTOSAVE_MS);
+
+window.addEventListener("beforeunload", (e) => {
+  if (!dirty) return;
+  e.preventDefault();
+});
+
 /* ---------- ページ送り ---------- */
 window.addEventListener("keydown", (e) => {
+  // ファイル操作は本文にフォーカスがあっても効かせる
+  if (e.ctrlKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === "o") {
+      e.preventDefault();
+      void doOpen();
+      return;
+    }
+    if (k === "s") {
+      e.preventDefault();
+      void doSave(e.shiftKey);
+      return;
+    }
+  }
+
   if (e.target === paper) return;
   if (e.key === "PageDown") {
     scroller.movePage(1);
@@ -236,9 +349,14 @@ window.addEventListener("keydown", (e) => {
 });
 
 /* ---------- 起動 ---------- */
+// 本文が編集されたら「保存されていない変更あり」にする。
+// setText によるプログラム的な差し替えでは input は発火しない。
+paper.addEventListener("input", markDirty);
+
 cellRange.disabled = fitCheck.checked;
 applyLayout(layout);
 fitCellToViewport();
+void currentPath().then(setStatusFile).catch(() => setStatusFile(null));
 if (!MarkerLayer.supported) {
   statusMsg.textContent = "CSS Custom Highlight API が使えないため、マーカーは表示されません";
   statusMsg.classList.add("err");

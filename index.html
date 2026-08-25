@@ -12,6 +12,14 @@
     <div class="app">
       <header class="toolbar">
         <div class="ctl">
+          <label>ファイル</label>
+          <div class="row">
+            <button id="btnOpen" type="button" title="Ctrl+O">開く</button>
+            <button id="btnSave" type="button" title="Ctrl+S">保存</button>
+            <button id="btnSaveAs" type="button" title="Ctrl+Shift+S">名前を付けて</button>
+          </div>
+        </div>
+        <div class="ctl">
           <label for="preset">判型</label>
           <select id="preset">
             <option value="20,20">原稿用紙　20字 × 20行</option>
@@ -92,6 +100,7 @@
       </main>
 
       <footer class="statusbar">
+        <span id="status-file">新規</span>
         <span id="status-count">—</span>
         <span id="status-page">—</span>
         <span id="status-mark">—</span>

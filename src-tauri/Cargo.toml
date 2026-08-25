@@ -26,4 +26,5 @@ thunderdome = "0.6.1"
 encoding_rs = "0.8.35"
 once_cell = "1.21.4"
 lindera = { version = "5.3.0", features = ["embed-unidic"] }
+tauri-plugin-dialog = "2"
 

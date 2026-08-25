@@ -71,8 +71,8 @@ static SEGMENTER: OnceCell<Segmenter> = OnceCell::new();
 /// 辞書を読み込んで Segmenter を用意する。二回目以降は使い回す。
 fn segmenter() -> Result<&'static Segmenter, String> {
     SEGMENTER.get_or_try_init(|| {
-        let dictionary =
-            load_dictionary("embedded://unidic").map_err(|e| format!("辞書の読み込みに失敗: {e}"))?;
+        let dictionary = load_dictionary("embedded://unidic")
+            .map_err(|e| format!("辞書の読み込みに失敗: {e}"))?;
         Ok(Segmenter::new(Mode::Normal, dictionary, None))
     })
 }

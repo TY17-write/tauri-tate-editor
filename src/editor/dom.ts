@@ -265,6 +265,62 @@ export function splitAtCaret(paper: HTMLElement): void {
   sel.addRange(r);
 }
 
+/**
+ * キャレット位置に、改行を含みうるテキストを挿入する。
+ *
+ * ブラウザ任せにすると生の改行がテキストノードに残り、モデル側で
+ * 段落が余分に割れて DOM と食い違う（青空文庫からの貼り付けで実際に
+ * 起きた）。改行のところで段落を割りながら入れる。
+ */
+export function insertTextAtCaret(paper: HTMLElement, text: string): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  if (!paper.contains(range.startContainer)) return;
+  if (!range.collapsed) range.deleteContents();
+
+  const lines = text.split(NEWLINE_G);
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) splitAtCaret(paper);
+    if (lines[i].length) insertPlain(paper, lines[i]);
+  }
+}
+
+/** 改行を含まない文字列をキャレット位置に入れる。 */
+function insertPlain(paper: HTMLElement, s: string): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+
+  const para = findPara(paper, range.startContainer);
+  if (!para) return;
+
+  // テキストノードを分裂させると段落内のノードが増え、
+  // マーカーの Range を張る相手が分からなくなる。
+  // 段落の本文を組み立て直して、テキストノード 1 つに保つ。
+  const before = para.textContent ?? "";
+  let at = before.length;
+  const node = para.firstChild;
+  if (node && node.nodeType === Node.TEXT_NODE && range.startContainer === node) {
+    at = range.startOffset;
+  } else if (range.startContainer === para) {
+    at = range.startOffset === 0 ? 0 : before.length;
+  }
+
+  para.textContent = before.slice(0, at) + s + before.slice(at);
+
+  const target = para.firstChild;
+  const r = document.createRange();
+  if (target && target.nodeType === Node.TEXT_NODE) {
+    r.setStart(target, Math.min(at + s.length, (target as Text).length));
+  } else {
+    r.setStart(para, 0);
+  }
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
 /** ノードが属する段落要素を探す。 */
 function findPara(paper: HTMLElement, node: Node): HTMLElement | null {
   let cur: Node | null = node;

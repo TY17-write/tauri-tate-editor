@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import {
   caretOffset,
+  insertTextAtCaret,
   normalizeStructure,
   readText,
   setCaretOffset,
@@ -59,6 +60,17 @@ export class Session {
         splitAtCaret(this.paper);
         this.schedule();
       }
+    });
+
+    // 貼り付けは自前で処理する。ブラウザ任せにすると生の改行が
+    // テキストノードに残り、モデル側で段落が余分に割れる。
+    // 青空文庫からの貼り付けで実際に起きた。
+    this.paper.addEventListener("paste", (e) => {
+      const text = e.clipboardData?.getData("text/plain");
+      if (text === undefined) return;
+      e.preventDefault();
+      insertTextAtCaret(this.paper, text);
+      this.schedule();
     });
 
     this.paper.addEventListener("input", (e) => {
