@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use thunderdome::{Arena, Index};
 
 use crate::analyzer::{self, Mark};
+use crate::stats::{self, ParaInput, StyleOptions, StyleReport};
 
 /// 段落の識別子を JSON に載せるための形。
 ///
@@ -220,6 +221,27 @@ impl Document {
             });
         }
         Ok(out)
+    }
+
+    /// 文体を調べて報告を作る。
+    ///
+    /// まだ解析していない段落があれば先に解析する。品詞の情報が
+    /// 揃っていないと、副詞の割合や語の繰り返しが数えられない。
+    pub fn style_report(&mut self, opts: &StyleOptions) -> Result<StyleReport, String> {
+        self.analyze_pending()?;
+
+        let empty: Vec<Mark> = Vec::new();
+        let paras: Vec<ParaInput<'_>> = self
+            .order
+            .iter()
+            .filter_map(|&i| self.paras.get(i))
+            .map(|p| ParaInput {
+                text: &p.text,
+                marks: p.marks.as_ref().unwrap_or(&empty),
+            })
+            .collect();
+
+        Ok(stats::analyze(&paras, opts))
     }
 
     /// 改行を除いた文字数。原稿用紙の枚数計算に使う。

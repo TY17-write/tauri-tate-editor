@@ -19,6 +19,7 @@
             <button id="btnSaveAs" type="button" title="Ctrl+Shift+S">名前を付けて</button>
             <button id="btnFind" type="button" title="Ctrl+F">検索</button>
             <button id="btnOutline" type="button" title="Ctrl+G">目次</button>
+            <button id="btnReport" type="button" title="Ctrl+R">文体</button>
           </div>
         </div>
         <div class="ctl">
@@ -127,6 +128,17 @@
             数を増やすと下の階層になります。<br />
             半角の <code>#</code> でも認識しますが、その行だけ升からずれます。
           </p>
+        </aside>
+
+        <aside class="report" id="report" hidden>
+          <div class="outline-head">
+            <span>文体</span>
+            <button id="reportRefresh" type="button" title="調べ直す">⟳</button>
+            <button id="reportClose" type="button" title="閉じる">×</button>
+          </div>
+          <div class="report-summary" id="reportSummary"></div>
+          <div class="report-filter" id="reportFilter"></div>
+          <ul class="report-list" id="reportList"></ul>
         </aside>
 
         <main class="viewport" id="viewport">

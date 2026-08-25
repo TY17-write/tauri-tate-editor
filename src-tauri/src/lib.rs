@@ -2,6 +2,7 @@ mod analyzer;
 mod backup;
 mod document;
 mod io;
+mod stats;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -11,6 +12,7 @@ use tauri::State;
 
 use document::{AnalyzeResult, Document, ParaId, ParaView};
 use io::LoadResult;
+use stats::{StyleOptions, StyleReport};
 
 /// 本文の正本。フロントエンドは表示用のミラーだけを持つ。
 struct AppState {
@@ -79,6 +81,18 @@ fn get_text(state: State<'_, AppState>) -> Result<String, String> {
 fn char_count(state: State<'_, AppState>) -> Result<usize, String> {
     let doc = state.doc.lock().map_err(|e| e.to_string())?;
     Ok(doc.char_count())
+}
+
+/// 文体を調べて報告を返す。
+///
+/// 未解析の段落があれば先に解析するので、初回は時間がかかることがある。
+#[tauri::command]
+fn style_report(
+    state: State<'_, AppState>,
+    options: Option<StyleOptions>,
+) -> Result<StyleReport, String> {
+    let mut doc = state.doc.lock().map_err(|e| e.to_string())?;
+    doc.style_report(&options.unwrap_or_default())
 }
 
 /// ファイルを読み込み、本文として取り込む。
@@ -201,6 +215,7 @@ pub fn run() {
             analyze_pending,
             get_text,
             char_count,
+            style_report,
             open_file,
             save_file,
             autosave,

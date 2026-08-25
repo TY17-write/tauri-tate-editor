@@ -11,6 +11,8 @@ import { MarkerLayer } from "./editor/marker";
 import { SearchLayer } from "./editor/search";
 import { bodyChars, buildOutline, parseHeading } from "./editor/outline";
 import type { Heading } from "./editor/outline";
+import { ISSUE_LABEL, fetchReport, per1000 } from "./editor/style";
+import type { Issue, IssueKind, StyleReport } from "./editor/style";
 import { VerticalScroller } from "./editor/scroll";
 import {
   DEFAULT_LAYOUT,
@@ -94,7 +96,12 @@ const session = new Session(paper, {
     statusMsg.textContent = msg;
     statusMsg.classList.toggle("err", Boolean(isError));
   },
-  onSynced: () => updateStatus(),
+  onSynced: () => {
+    updateStatus();
+    // 解析結果は Rust 側で段落ごとにキャッシュされるので、
+    // 編集のたびに調べ直しても再解析は変更のあった段落だけで済む
+    if (!report.hidden) void refreshReport();
+  },
   onEdit: () => {
     markDirty();
     // 本文が変わるとヒットの位置がずれるので、検索し直す
@@ -436,6 +443,139 @@ function toggleOutline(show?: boolean): void {
 $<HTMLButtonElement>("btnOutline").addEventListener("click", () => toggleOutline());
 $<HTMLButtonElement>("outlineClose").addEventListener("click", () => toggleOutline(false));
 
+/* ---------- 文体の報告 ---------- */
+const report = $<HTMLElement>("report");
+const reportSummary = $<HTMLElement>("reportSummary");
+const reportFilter = $<HTMLElement>("reportFilter");
+const reportList = $<HTMLElement>("reportList");
+
+const ISSUE_KINDS: IssueKind[] = [
+  "longsentence",
+  "repeatedending",
+  "nearbyrepeat",
+  "overuse",
+];
+const shownKinds = new Set<IssueKind>(ISSUE_KINDS);
+
+function renderSummary(r: StyleReport): void {
+  const rows: [string, string][] = [
+    ["本文", `<b>${r.chars.toLocaleString()}</b> 字`],
+    ["文の数", `<b>${r.sentences.toLocaleString()}</b>`],
+    ["一文の平均", `<b>${r.avgSentence.toFixed(1)}</b> 字`],
+    ["いちばん長い文", `<b>${r.maxSentence}</b> 字`],
+    ["会話の割合", `<b>${(r.dialogueRatio * 100).toFixed(0)}</b> %`],
+    ["副詞", `<b>${per1000(r.pos.adverb, r.chars).toFixed(1)}</b> 回/千字`],
+    ["形容詞", `<b>${per1000(r.pos.adjective, r.chars).toFixed(1)}</b> 回/千字`],
+    ["形容動詞", `<b>${per1000(r.pos.adjectivalNoun, r.chars).toFixed(1)}</b> 回/千字`],
+  ];
+  reportSummary.innerHTML =
+    "<dl>" + rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("") + "</dl>";
+}
+
+function renderFilter(r: StyleReport): void {
+  reportFilter.replaceChildren();
+  for (const kind of ISSUE_KINDS) {
+    const n = r.issues.filter((i) => i.kind === kind).length;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${ISSUE_LABEL[kind]} ${n}`;
+    b.classList.toggle("is-off", !shownKinds.has(kind));
+    b.addEventListener("click", () => {
+      if (shownKinds.has(kind)) shownKinds.delete(kind);
+      else shownKinds.add(kind);
+      b.classList.toggle("is-off", !shownKinds.has(kind));
+      renderIssues(r);
+    });
+    reportFilter.appendChild(b);
+  }
+}
+
+function renderIssues(r: StyleReport): void {
+  reportList.replaceChildren();
+  const list = r.issues.filter((i) => shownKinds.has(i.kind));
+  if (list.length === 0) {
+    const li = document.createElement("li");
+    li.className = "report-empty";
+    li.textContent = r.issues.length === 0 ? "指摘はありません" : "表示する種類がありません";
+    reportList.appendChild(li);
+    return;
+  }
+  for (const issue of list) {
+    const li = document.createElement("li");
+    const kind = document.createElement("span");
+    kind.className = `kind kind-${issue.kind}`;
+    kind.textContent = ISSUE_LABEL[issue.kind];
+    const msg = document.createElement("span");
+    msg.textContent = issue.message;
+    const ex = document.createElement("span");
+    ex.className = "excerpt";
+    ex.textContent = issue.excerpt;
+    li.append(kind, msg, ex);
+    li.addEventListener("click", () => jumpToIssue(issue));
+    reportList.appendChild(li);
+  }
+}
+
+/** 指摘箇所へ飛んで強調する。 */
+function jumpToIssue(issue: Issue): void {
+  const el = paper.children[issue.para] as HTMLElement | undefined;
+  if (!el) return;
+  const node = el.firstChild;
+  if (!node || node.nodeType !== Node.TEXT_NODE) return;
+
+  const len = (node as Text).length;
+  const start = Math.min(issue.start, len);
+  const end = Math.min(issue.end, len);
+  if (start >= end) return;
+
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  scroller.revealRange(range);
+
+  if (MarkerLayer.supported) {
+    CSS.highlights.set("issue-current", new Highlight(range));
+  }
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
+
+async function refreshReport(): Promise<void> {
+  if (report.hidden) return;
+  try {
+    reportList.replaceChildren();
+    const li = document.createElement("li");
+    li.className = "report-empty";
+    li.textContent = "調べています…";
+    reportList.appendChild(li);
+
+    const r = await fetchReport();
+    renderSummary(r);
+    renderFilter(r);
+    renderIssues(r);
+  } catch (err) {
+    reportList.replaceChildren();
+    const li = document.createElement("li");
+    li.className = "report-empty";
+    li.textContent = `調べられません: ${String(err)}`;
+    reportList.appendChild(li);
+  }
+}
+
+function toggleReport(show?: boolean): void {
+  const next = show ?? report.hidden;
+  report.hidden = !next;
+  if (next) void refreshReport();
+  else if (MarkerLayer.supported) CSS.highlights.delete("issue-current");
+  fitCellToViewport();
+  scroller.calibrate();
+}
+
+$<HTMLButtonElement>("btnReport").addEventListener("click", () => toggleReport());
+$<HTMLButtonElement>("reportClose").addEventListener("click", () => toggleReport(false));
+$<HTMLButtonElement>("reportRefresh").addEventListener("click", () => void refreshReport());
+
 /* ---------- 検索と置換 ---------- */
 const findbar = $<HTMLElement>("findbar");
 const findQuery = $<HTMLInputElement>("findQuery");
@@ -575,6 +715,11 @@ window.addEventListener("keydown", (e) => {
     if (k === "g") {
       e.preventDefault();
       toggleOutline();
+      return;
+    }
+    if (k === "r") {
+      e.preventDefault();
+      toggleReport();
       return;
     }
   }
