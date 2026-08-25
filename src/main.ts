@@ -90,13 +90,23 @@ function updateStatus(): void {
 }
 
 /* ---------- 組版設定 ---------- */
-function refreshLayout(): void {
-  applyLayout(layout);
-  if (!isGridSafeFont(layout.font) && paper.className.includes("grid-full")) {
-    session.marker.render();
+
+/** 書体とマス目の組み合わせが噛み合っているかを知らせる。 */
+function checkFontWarning(): void {
+  const gridOn = paper.classList.contains("grid-full") || paper.classList.contains("grid-rules");
+  if (gridOn && !isGridSafeFont(layout.font)) {
     statusMsg.textContent = "この書体は約物が詰まるため、升目とは揃いません";
     statusMsg.classList.add("err");
+  } else if (statusMsg.classList.contains("err")) {
+    // 自分が出した警告だけを消す
+    statusMsg.textContent = "";
+    statusMsg.classList.remove("err");
   }
+}
+
+function refreshLayout(): void {
+  applyLayout(layout);
+  checkFontWarning();
   updateStatus();
 }
 
@@ -141,6 +151,7 @@ $<HTMLSelectElement>("gridMode").addEventListener("change", (e) => {
   const v = (e.target as HTMLSelectElement).value;
   paper.classList.remove("grid-full", "grid-rules", "grid-page");
   if (v) paper.classList.add(v);
+  checkFontWarning();
 });
 
 /* ---------- マーカー ---------- */
