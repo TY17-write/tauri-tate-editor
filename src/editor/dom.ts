@@ -63,10 +63,12 @@ export function caretOffset(paper: HTMLElement): number | null {
   const probe = document.createRange();
   probe.selectNodeContents(paper);
   probe.setEnd(range.startContainer, range.startOffset);
-  // 段落の区切りも 1 文字（改行）として数える
+  // 段落の区切りも 1 文字（改行）として数える。
+  // Range#toString は textContent 相当なので、傍線モードの span を
+  // またいでも文字数はそのまま数えられる。
   const before = probe.cloneContents();
   const paras = before.querySelectorAll("p").length;
-  return probe.toString().replace(/​/g, "").length + Math.max(0, paras - 1);
+  return probe.toString().length + Math.max(0, paras - 1);
 }
 
 /** 文字オフセットで指定した位置へキャレットを戻す。 */
@@ -75,15 +77,27 @@ export function setCaretOffset(paper: HTMLElement, offset: number): void {
   for (const el of Array.from(paper.children)) {
     const len = paraText(el).length;
     if (remain <= len) {
-      const node = el.firstChild;
       const sel = window.getSelection();
       const range = document.createRange();
-      if (node && node.nodeType === Node.TEXT_NODE) {
-        const max = (node as Text).length;
-        range.setStart(node, Math.min(remain, max));
-      } else {
-        range.setStart(el, 0);
+
+      // 段落内のテキストノードを順に辿る。傍線モードでは
+      // sidemark の span に分かれているので、先頭の子だけを
+      // 見ていると span の内側へキャレットを戻せない。
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let acc = 0;
+      let placed = false;
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        const l = (node as Text).length;
+        if (acc + l >= remain) {
+          range.setStart(node, remain - acc);
+          placed = true;
+          break;
+        }
+        acc += l;
       }
+      if (!placed) range.setStart(el, el.childNodes.length);
+
       range.collapse(true);
       sel?.removeAllRanges();
       sel?.addRange(range);
@@ -107,14 +121,30 @@ export function setCaretOffset(paper: HTMLElement, offset: number): void {
    構造の維持
    ============================================================ */
 
-/** すべての子が <p> で、かつ中身がテキストノード1つだけか。 */
+/**
+ * 段落の中身として許される子ノードか。
+ *
+ * テキストノードのほか、傍線（右）モードが挿す sidemark の span を
+ * 認める。これを認めないと、傍線を出すたびに構造が汚れていると
+ * 判定され、修復と再描画を延々と繰り返すことになる。
+ */
+function isCleanChild(n: Node): boolean {
+  if (n.nodeType === Node.TEXT_NODE) return true;
+  return (
+    n.nodeType === Node.ELEMENT_NODE &&
+    (n as Element).tagName === "SPAN" &&
+    (n as Element).classList.contains("sidemark")
+  );
+}
+
+/** すべての子が <p> で、その中身がテキストか sidemark の span だけか。 */
 export function isStructureClean(paper: HTMLElement): boolean {
   for (const el of Array.from(paper.childNodes)) {
     if (el.nodeType !== Node.ELEMENT_NODE) return false;
     if ((el as Element).tagName !== "P") return false;
-    const p = el as Element;
-    if (p.childNodes.length > 1) return false;
-    if (p.firstChild && p.firstChild.nodeType !== Node.TEXT_NODE) return false;
+    for (const child of Array.from(el.childNodes)) {
+      if (!isCleanChild(child)) return false;
+    }
   }
   return paper.childNodes.length > 0;
 }
@@ -123,13 +153,43 @@ export function isStructureClean(paper: HTMLElement): boolean {
  * 崩れた構造を「1段落 = 1つの <p>」に直す。
  * キャレットは文字オフセットで保存・復元する。
  *
+ * 段落の並びは DOM の構造から直接組み立てる。ここで
+ * `paper.innerText` を使ってはいけない。innerText は <br> を
+ * 改行に変換するため、ブラウザが段落内に挿入した <br> が
+ * 本物の改行に化けて、段落が勝手に増える。
+ * `textContent` は <br> を無視するので、段落は分裂しない。
+ *
  * 戻り値は実際に直したかどうか。
  */
 export function normalizeStructure(paper: HTMLElement): boolean {
   if (isStructureClean(paper)) return false;
   const caret = caretOffset(paper);
-  const text = (paper.innerText ?? "").replace(/​/g, "");
-  writeText(paper, text.length ? text : "");
+
+  const lines: string[] = [];
+  for (const node of Array.from(paper.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // <p> の外に投げ出された裸のテキスト。1段落として拾う
+      const t = node.nodeValue ?? "";
+      if (t.length) lines.push(t);
+      continue;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = node as Element;
+    if (el.tagName === "BR") {
+      // paper の直下に来た <br> だけは、段落の切れ目として扱う
+      lines.push("");
+      continue;
+    }
+    // <p> でも <div> でも、中身のテキストを1段落とする。
+    // 段落内の <br> は textContent が無視するので改行にならない。
+    lines.push(el.textContent ?? "");
+  }
+
+  const frag = document.createDocumentFragment();
+  if (lines.length === 0) lines.push("");
+  for (const line of lines) frag.appendChild(createPara(line));
+  paper.replaceChildren(frag);
+
   if (caret !== null) setCaretOffset(paper, caret);
   return true;
 }
