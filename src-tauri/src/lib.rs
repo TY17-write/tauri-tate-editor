@@ -2,6 +2,7 @@ mod analyzer;
 mod backup;
 mod document;
 mod io;
+mod notation;
 mod stats;
 
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use tauri::State;
 
 use document::{AnalyzeResult, Document, ParaId, ParaView};
 use io::LoadResult;
+use notation::{Notation, NotationCount, Piece};
 use stats::{StyleOptions, StyleReport};
 
 /// 本文の正本。フロントエンドは表示用のミラーだけを持つ。
@@ -93,6 +95,46 @@ fn style_report(
 ) -> Result<StyleReport, String> {
     let mut doc = state.doc.lock().map_err(|e| e.to_string())?;
     doc.style_report(&options.unwrap_or_default())
+}
+
+/// 本文の記法を別の記法に直す。直したあとの本文を返す。
+///
+/// 傍点を書けない記法へ移すときは記号を落として文字だけ残す。
+/// 記号を残すと投稿先でそのまま表示されてしまうため。
+#[tauri::command]
+fn convert_notation(
+    state: State<'_, AppState>,
+    from: Notation,
+    to: Notation,
+) -> Result<String, String> {
+    let mut doc = state.doc.lock().map_err(|e| e.to_string())?;
+    let converted = notation::convert(&doc.text(), from, to);
+    doc.set_text(&converted);
+    Ok(converted)
+}
+
+/// 本文に含まれるルビと傍点の数。記法を変える前の確認に使う。
+#[tauri::command]
+fn count_notation(
+    state: State<'_, AppState>,
+    notation_kind: Notation,
+) -> Result<NotationCount, String> {
+    let doc = state.doc.lock().map_err(|e| e.to_string())?;
+    Ok(notation::count(&doc.text(), notation_kind))
+}
+
+/// 本文をプレビュー用の部品に分ける。段落ごとの配列で返す。
+#[tauri::command]
+fn preview_pieces(
+    state: State<'_, AppState>,
+    notation_kind: Notation,
+) -> Result<Vec<Vec<Piece>>, String> {
+    let doc = state.doc.lock().map_err(|e| e.to_string())?;
+    Ok(doc
+        .text()
+        .split('\n')
+        .map(|l| notation::pieces(l, notation_kind))
+        .collect())
 }
 
 /// ファイルを読み込み、本文として取り込む。
@@ -216,6 +258,9 @@ pub fn run() {
             get_text,
             char_count,
             style_report,
+            convert_notation,
+            count_notation,
+            preview_pieces,
             open_file,
             save_file,
             autosave,

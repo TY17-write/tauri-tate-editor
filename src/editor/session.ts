@@ -18,8 +18,18 @@ import {
   writeText,
 } from "./dom";
 import { MarkerLayer } from "./marker";
+import { buildPreviewPara, previewPieces, readPreview, readPreviewPara } from "./notation";
+import type { Notation } from "./notation";
 import { idKey } from "./types";
 import type { AnalyzeResult, ParaId, ParaView } from "./types";
+
+/**
+ * 編集の見え方。
+ *
+ * source  記法をそのまま見せる。品詞マーカーが使える
+ * preview ルビや傍点を実際の形で見せる。ここでも編集できる
+ */
+export type EditMode = "source" | "preview";
 
 /** 入力が止まってから解析を投げるまでの待ち時間(ms)。 */
 const DEBOUNCE_MS = 250;
@@ -47,6 +57,8 @@ export class Session {
   private lastSent: string | null = null;
   /** 本文の不一致が続いている回数 */
   private mismatchRetries = 0;
+  /** いまの見え方 */
+  private mode: EditMode = "source";
 
   constructor(
     paper: HTMLElement,
@@ -144,6 +156,9 @@ export class Session {
    * 本文の先頭からの文字オフセットで保存して戻す。
    */
   renderMarks(): void {
+    // プレビューでは段落の中身がテキストノード 1 つではないので、
+    // Rust が返すオフセットと対応が付かない
+    if (this.mode === "preview") return;
     if (!this.marker.usesDom) {
       this.marker.render();
       return;
@@ -180,9 +195,56 @@ export class Session {
     await this.sync();
   }
 
-  /** 現在の本文。 */
+  /** 現在の本文。プレビュー中でも記法テキストとして取り出せる。 */
   text(): string {
-    return readText(this.paper);
+    return this.mode === "preview" ? readPreview(this.paper) : readText(this.paper);
+  }
+
+  get editMode(): EditMode {
+    return this.mode;
+  }
+
+  /**
+   * 見え方を切り替える。
+   *
+   * プレビューではルビと傍点を実際の形で見せる。要素は
+   * `contenteditable="false"` の塊にしてあるので、キャレットが
+   * 中に入り込んで記法が壊れることはない。
+   *
+   * 品詞マーカーはプレビューでは出さない。段落の中身がテキスト
+   * ノード 1 つではなくなり、Rust が返すオフセットと対応が
+   * 付かなくなるため。推敲は記法の画面で行う。
+   */
+  async setMode(mode: EditMode, notation: Notation): Promise<void> {
+    if (mode === this.mode) return;
+    // いまの本文を確定させてから切り替える
+    await this.sync();
+
+    if (mode === "preview") {
+      const paras = await previewPieces(notation);
+      const frag = document.createDocumentFragment();
+      for (const pieces of paras) frag.appendChild(buildPreviewPara(pieces));
+      this.paper.replaceChildren(frag);
+      this.marker.clear();
+    } else {
+      const text = readPreview(this.paper);
+      writeText(this.paper, text);
+    }
+
+    this.mode = mode;
+    this.resetHistory();
+    this.lastSent = null;
+    await this.sync();
+  }
+
+  /** プレビューを組み直す。記法を変えたあとに使う。 */
+  async rebuildPreview(notation: Notation): Promise<void> {
+    if (this.mode !== "preview") return;
+    const paras = await previewPieces(notation);
+    const frag = document.createDocumentFragment();
+    for (const pieces of paras) frag.appendChild(buildPreviewPara(pieces));
+    this.paper.replaceChildren(frag);
+    this.resetHistory();
   }
 
   /**
@@ -209,12 +271,14 @@ export class Session {
     this.dirty = false;
 
     try {
-      // ブラウザが構造を壊していたら直す
-      if (normalizeStructure(this.paper)) {
+      // ブラウザが構造を壊していたら直す。
+      // プレビューでは段落の中にルビの塊が入っているので、
+      // 構造を直そうとするとそれを潰してしまう。触らない。
+      if (this.mode === "source" && normalizeStructure(this.paper)) {
         this.events.onStatus?.("段落の構造を修復しました");
       }
 
-      const text = readText(this.paper);
+      const text = this.text();
       if (text === this.lastSent) {
         this.renderMarks();
         return;
@@ -329,7 +393,10 @@ export class Session {
       return `段落数 DOM ${els.length} / モデル ${views.length}`;
     }
     for (let i = 0; i < els.length; i++) {
-      const a = els[i].textContent ?? "";
+      // プレビューでは textContent にルビの読みまで入ってしまうので、
+      // 記法テキストに戻したうえで見比べる
+      const a =
+        this.mode === "preview" ? readPreviewPara(els[i]) : (els[i].textContent ?? "");
       if (a !== views[i].text) {
         return `${i + 1} 段落目（DOM ${a.length} 字 / モデル ${views[i].text.length} 字）`;
       }

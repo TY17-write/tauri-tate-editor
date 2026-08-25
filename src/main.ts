@@ -7,6 +7,16 @@
  */
 
 import { Session } from "./editor/session";
+import type { EditMode } from "./editor/session";
+import {
+  NOTATIONS,
+  convertNotation,
+  countNotation,
+  loadNotation,
+  notationInfo,
+  saveNotation,
+} from "./editor/notation";
+import type { Notation } from "./editor/notation";
 import { MarkerLayer } from "./editor/marker";
 import { SearchLayer } from "./editor/search";
 import { bodyChars, buildOutline, parseHeading } from "./editor/outline";
@@ -48,12 +58,12 @@ const SAMPLE = [
   "",
   "＃＃一　硝子戸",
   "",
-  "　夜半の風が硝子戸を鳴らしていた。まだ午前二時、原稿はわずか十二枚しか進んでいない。",
+  "　夜半の風が|硝子戸《ガラスど》を鳴らしていた。まだ午前二時、原稿はわずか十二枚しか進んでいない。",
   "　わたしはふと顔を上げた。しばらくのあいだ、その音に耳を澄ませていた。とても静かな夜だった。ずいぶん長く、同じ行を書いては消していたように思う。",
   "　「まだ起きていたのか」",
   "　背後で声がした。振り返ると、兄が立っている。ずいぶん久しぶりに見る顔だった……ように思えたが、実際には昨日も会っている。",
   "　「ええ。少しだけ」",
-  "　わたしはそう答えて、机の上の原稿用紙を裏返した。まだ誰にも見せたくなかった。",
+  "　わたしはそう答えて、机の上の原稿用紙を裏返した。《《まだ誰にも見せたくなかった》》。",
   "　兄はゆっくりと近づいてきて、窓の外を眺めた。暗い庭に、白いものがちらついている。",
   "　「雪だな」",
   "　「そうですね」",
@@ -275,6 +285,93 @@ btnMarker.addEventListener("click", () => {
 $<HTMLButtonElement>("btnNormalize").addEventListener("click", () => {
   void session.setText(normalizeText(session.text()));
 });
+
+/* ---------- 記法と表示モード ---------- */
+const notationSel = $<HTMLSelectElement>("notation");
+const modeSourceBtn = $<HTMLButtonElement>("modeSource");
+const modePreviewBtn = $<HTMLButtonElement>("modePreview");
+let notation: Notation = loadNotation();
+
+for (const n of NOTATIONS) {
+  const o = document.createElement("option");
+  o.value = n.value;
+  o.textContent = n.label;
+  notationSel.appendChild(o);
+}
+notationSel.value = notation;
+notationSel.title = notationInfo(notation).hint;
+
+/**
+ * 記法を変える。本文のルビと傍点も書き換える。
+ *
+ * 傍点を書けない記法へ移すと傍点が失われるので、先に断りを入れる。
+ */
+async function changeNotation(next: Notation): Promise<void> {
+  if (next === notation) return;
+  const from = notationInfo(notation);
+  const to = notationInfo(next);
+
+  try {
+    const counts = await countNotation(notation);
+    if (counts.emphasis > 0 && from.emphasis && !to.emphasis) {
+      const ok = window.confirm(
+        `${to.label}には傍点の書き方がありません。\n` +
+          `本文の傍点 ${counts.emphasis} 箇所は、記号を外して文字だけが残ります。\n\n` +
+          `続けますか。`,
+      );
+      if (!ok) {
+        notationSel.value = notation;
+        return;
+      }
+    }
+
+    const converted = await convertNotation(notation, next);
+    notation = next;
+    saveNotation(notation);
+    notationSel.title = to.hint;
+
+    if (session.editMode === "preview") {
+      await session.rebuildPreview(notation);
+    } else {
+      await session.setText(converted);
+    }
+    markDirty();
+
+    const c = await countNotation(notation);
+    statusMsg.textContent =
+      `${from.label} → ${to.label}　ルビ ${c.ruby} / 傍点 ${c.emphasis}`;
+    statusMsg.classList.remove("err");
+  } catch (err) {
+    notationSel.value = notation;
+    statusMsg.textContent = `記法を変えられません: ${String(err)}`;
+    statusMsg.classList.add("err");
+  }
+}
+
+notationSel.addEventListener("change", () => void changeNotation(notationSel.value as Notation));
+
+/** 表示モードを切り替える。 */
+async function setMode(mode: EditMode): Promise<void> {
+  if (mode === session.editMode) return;
+  try {
+    await session.setMode(mode, notation);
+    modeSourceBtn.classList.toggle("is-on", mode === "source");
+    modePreviewBtn.classList.toggle("is-on", mode === "preview");
+    paper.dataset.mode = mode;
+    statusMsg.textContent =
+      mode === "preview"
+        ? "プレビュー表示。ここでも書けますが、品詞マーカーは出ません"
+        : "記法表示";
+    statusMsg.classList.remove("err");
+    updateStatus();
+  } catch (err) {
+    statusMsg.textContent = `表示を切り替えられません: ${String(err)}`;
+    statusMsg.classList.add("err");
+  }
+}
+
+modeSourceBtn.addEventListener("click", () => void setMode("source"));
+modePreviewBtn.addEventListener("click", () => void setMode("preview"));
 
 /* ---------- ファイル ---------- */
 const statusFile = $<HTMLElement>("status-file");
@@ -837,6 +934,11 @@ window.addEventListener("keydown", (e) => {
     if (k === "r") {
       e.preventDefault();
       toggleReport();
+      return;
+    }
+    if (k === "e") {
+      e.preventDefault();
+      void setMode(session.editMode === "source" ? "preview" : "source");
       return;
     }
   }

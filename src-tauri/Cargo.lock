@@ -4055,6 +4055,7 @@ dependencies = [
  "encoding_rs",
  "lindera",
  "once_cell",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

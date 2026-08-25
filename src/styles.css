@@ -489,6 +489,28 @@ button.toggle.is-on {
   margin: 0;
 }
 
+/* プレビューのルビと傍点。
+   どちらも contenteditable="false" の塊にしてあるので、
+   キャレットが中に入り込んで記法が壊れることがない。 */
+.paper ruby {
+  ruby-position: over;
+}
+.paper ruby rt {
+  font-size: 0.5em;
+  /* ルビのぶんだけ行が太らないよう、行送りの中に収める */
+  line-height: 1;
+}
+.paper .bouten {
+  text-emphasis: filled sesame;
+  text-emphasis-position: over right;
+  -webkit-text-emphasis: filled sesame;
+}
+/* 塊であることが分かるよう、選んだときだけ薄く敷く */
+.paper ruby::selection,
+.paper .bouten::selection {
+  background: rgba(90, 140, 220, 0.3);
+}
+
 /* 見出し行。
    文字サイズを変えるとマス目から外れてしまうので、色だけで示す。
    太字も字送りが変わる書体があるため使わない。 */
