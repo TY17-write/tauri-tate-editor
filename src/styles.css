@@ -173,6 +173,14 @@ button.toggle.is-on {
   margin: 0;
 }
 
+/* 空段落が潰れないように 1 行ぶんの幅を持たせる。
+   ここで本物の文字を入れてしまうと、DOM のテキストが Rust へ
+   送る本文とずれ、マーカーの位置が 1 文字分ずれる。
+   疑似要素の content は textContent に含まれないので安全。 */
+.paper p:empty::before {
+  content: "\200B";
+}
+
 /* マス目。先に書いたレイヤーが上に来る */
 .grid-full {
   background-image:

@@ -17,7 +17,6 @@
  * かつ変換中でないときにだけ呼ぶこと。
  */
 
-import { EMPTY_PARA } from "./dom";
 import type { Mark, PosTag } from "./types";
 
 /** 段落に span を挿して傍線を引く。 */
@@ -31,7 +30,8 @@ export function paintSideMarks(el: HTMLElement, marks: Mark[], visible: Set<PosT
   if (targets.length === 0) {
     // 元のテキストノード1つだけの状態に戻す
     if (el.childNodes.length !== 1 || el.firstChild?.nodeType !== Node.TEXT_NODE) {
-      el.textContent = text.length ? text : EMPTY_PARA;
+      if (text.length) el.textContent = text;
+      else el.replaceChildren();
     }
     return;
   }
@@ -57,5 +57,6 @@ export function paintSideMarks(el: HTMLElement, marks: Mark[], visible: Set<PosT
 export function clearSideMarks(el: HTMLElement): void {
   if (!el.querySelector(".sidemark")) return;
   const text = el.textContent ?? "";
-  el.textContent = text.length ? text : EMPTY_PARA;
+  if (text.length) el.textContent = text;
+  else el.replaceChildren();
 }

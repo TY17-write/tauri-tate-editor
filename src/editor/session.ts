@@ -29,7 +29,7 @@ export interface SessionEvents {
 }
 
 export class Session {
-  readonly marker = new MarkerLayer();
+  readonly marker: MarkerLayer;
   private composing = false;
   private timer: number | null = null;
   private syncing = false;
@@ -41,6 +41,7 @@ export class Session {
     private readonly paper: HTMLElement,
     private readonly events: SessionEvents = {},
   ) {
+    this.marker = new MarkerLayer(paper);
     this.bind();
   }
 
@@ -55,8 +56,11 @@ export class Session {
       }
     });
 
-    this.paper.addEventListener("input", () => {
-      if (this.composing) return;
+    this.paper.addEventListener("input", (e) => {
+      // composing フラグに加えて inputType でも弾く。
+      // 変換中の打鍵は insertCompositionText として飛んでくる。
+      const t = (e as InputEvent).inputType;
+      if (this.composing || t === "insertCompositionText") return;
       this.schedule();
     });
 
@@ -71,6 +75,10 @@ export class Session {
     });
     this.paper.addEventListener("compositionend", () => {
       this.composing = false;
+      // 変換中に未確定文字列を送ってしまっていた場合、lastSent が
+      // それを覚えていると「変化なし」と判断して送り直さない。
+      // 確定後は必ず送り直して、確定後の本文で解析させる。
+      this.lastSent = null;
       this.schedule();
     });
   }
@@ -124,6 +132,13 @@ export class Session {
    * 編集された段落だけで済む。
    */
   async sync(): Promise<void> {
+    // IME 変換中は未確定文字列が DOM に入っている。この状態で送ると
+    // 変換前のひらがなを解析することになり、同じ文でもマーカーが
+    // 変わってしまう。確定するまで待つ。
+    if (this.composing) {
+      this.dirty = true;
+      return;
+    }
     if (this.syncing) {
       // 実行中に来た変更は、終わってからもう一度回す
       this.schedule();
@@ -148,6 +163,16 @@ export class Session {
       const t0 = performance.now();
       const views = await invoke<ParaView[]>("set_text", { text });
       this.attachIds(views);
+
+      // DOM の本文と Rust 側の本文がずれていないか検算する。
+      // ここがずれるとマーカーの位置が狂い、別の語に線が付いて見える。
+      // 過去にゼロ幅スペースの混入で実際に起きたので、常時見張る。
+      const mismatch = this.verify(views);
+      if (mismatch) {
+        this.events.onStatus?.(`本文の不一致: ${mismatch}`, true);
+        this.marker.clear();
+        return;
+      }
 
       const results = await invoke<AnalyzeResult[]>("analyze_pending");
       this.applyMarks(results);
@@ -204,18 +229,32 @@ export class Session {
     return keys;
   }
 
-  /** 解析結果を、対応する段落要素に紐づける。 */
+  /** 解析結果を段落 ID に紐づける。DOM 要素は描画時に引き直される。 */
   private applyMarks(results: AnalyzeResult[]): void {
-    const byKey = new Map<string, HTMLElement>();
-    for (const el of Array.from(this.paper.children) as HTMLElement[]) {
-      const slot = el.dataset.slot;
-      const gen = el.dataset.gen;
-      if (slot !== undefined && gen !== undefined) byKey.set(`${slot}:${gen}`, el);
+    for (const r of results) this.marker.set(r.id, r.marks);
+  }
+
+  /**
+   * DOM の段落と Rust 側の段落が一字一句一致しているかを確かめる。
+   *
+   * マーカーの位置は Rust が返したオフセットで決まるので、
+   * DOM 側に余計な文字（かつてのゼロ幅スペースなど）が混ざると
+   * 線がずれた語に付く。ずれたら黙って表示するより止めた方がよい。
+   *
+   * 一致していれば null、していなければ理由を返す。
+   */
+  private verify(views: ParaView[]): string | null {
+    const els = Array.from(this.paper.children) as HTMLElement[];
+    if (els.length !== views.length) {
+      return `段落数 DOM ${els.length} / モデル ${views.length}`;
     }
-    for (const r of results) {
-      const el = byKey.get(idKey(r.id));
-      if (el) this.marker.set(r.id, el, r.marks);
+    for (let i = 0; i < els.length; i++) {
+      const a = els[i].textContent ?? "";
+      if (a !== views[i].text) {
+        return `${i + 1} 段落目（DOM ${a.length} 字 / モデル ${views[i].text.length} 字）`;
+      }
     }
+    return null;
   }
 
   /** 段落 ID の一覧（デバッグ・テスト用）。 */

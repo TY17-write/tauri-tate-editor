@@ -9,20 +9,22 @@
  * ときのために normalizeStructure() を用意してある。
  */
 
-/** 空段落の高さを保つための文字（ゼロ幅スペース）。 */
-export const EMPTY_PARA = "​";
-
-/** 段落要素を1つ作る。 */
+/**
+ * 段落要素を1つ作る。
+ *
+ * 空段落にダミー文字を入れてはいけない。DOM のテキストが Rust へ
+ * 送る本文とずれ、マーカーの位置がその分ずれる。
+ * 空段落が潰れないようにするのは CSS（`p:empty::before`）の役目。
+ */
 export function createPara(text: string): HTMLParagraphElement {
   const p = document.createElement("p");
-  p.textContent = text.length ? text : EMPTY_PARA;
+  if (text.length) p.textContent = text;
   return p;
 }
 
-/** 表示用のテキストから、モデルに渡す実テキストへ。 */
+/** 段落要素のテキスト。DOM の文字列がそのままモデルの文字列になる。 */
 function paraText(el: Element): string {
-  const t = el.textContent ?? "";
-  return t === EMPTY_PARA ? "" : t.replace(/​/g, "");
+  return el.textContent ?? "";
 }
 
 /** 現在の DOM から段落テキストの配列を取り出す。 */
@@ -151,13 +153,11 @@ export function splitAtCaret(paper: HTMLElement): void {
   if (!para) return;
 
   const node = para.firstChild;
-  const full = node && node.nodeType === Node.TEXT_NODE ? (node as Text).data : "";
-  const clean = full === EMPTY_PARA ? "" : full;
+  const clean = node && node.nodeType === Node.TEXT_NODE ? (node as Text).data : "";
 
   let at = 0;
   if (node && range.startContainer === node) {
     at = range.startOffset;
-    if (full === EMPTY_PARA) at = 0;
   } else if (range.startContainer === para) {
     at = range.startOffset === 0 ? 0 : clean.length;
   }
@@ -165,14 +165,18 @@ export function splitAtCaret(paper: HTMLElement): void {
   const head = clean.slice(0, at);
   const tail = clean.slice(at);
 
-  para.textContent = head.length ? head : EMPTY_PARA;
+  // 空になる側はテキストノードを持たせない。ダミー文字を入れると
+  // Rust へ送る本文とずれてマーカーの位置が狂う。
+  if (head.length) para.textContent = head;
+  else para.replaceChildren();
+
   const next = createPara(tail);
   para.after(next);
 
   const r = document.createRange();
   const target = next.firstChild;
   if (target && target.nodeType === Node.TEXT_NODE) {
-    r.setStart(target, tail.length ? 0 : (target as Text).length);
+    r.setStart(target, 0);
   } else {
     r.setStart(next, 0);
   }

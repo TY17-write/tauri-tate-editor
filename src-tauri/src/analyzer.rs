@@ -59,7 +59,7 @@ impl PosTag {
 }
 
 /// 段落内のマーカー範囲。オフセットは UTF-16 単位。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mark {
     pub start: u32,
     pub end: u32,
@@ -150,5 +150,39 @@ mod tests {
     #[test]
     fn 空文字列は空を返す() {
         assert!(analyze_text("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn 同じ本文なら常に同じ結果になる() {
+        // 「同じ文なのにマーカーの付き方が違う」という症状の切り分け用。
+        // 解析器がここで決定的だと分かれば、差が出た場合の原因は
+        // フロントエンドが送った本文の側にあると言い切れる。
+        let text = "とくに考えるまでもなく、問題とならない";
+        let a = analyze_text(text).unwrap();
+        let b = analyze_text(text).unwrap();
+        let c = analyze_text(text).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(b, c);
+    }
+
+    /// 解析結果を目で見るための補助。`cargo test 解析結果を表示 -- --nocapture`
+    #[test]
+    fn 解析結果を表示() {
+        for text in [
+            "とくに考えるまでもなく、問題とならない",
+            "問題とならない",
+            "とても静かな夜だった",
+        ] {
+            let marks = analyze_text(text).unwrap();
+            let u: Vec<u16> = text.encode_utf16().collect();
+            println!("── {text}");
+            if marks.is_empty() {
+                println!("   （マーカーなし）");
+            }
+            for m in &marks {
+                let s = String::from_utf16_lossy(&u[m.start as usize..m.end as usize]);
+                println!("   {:?} {:?} [{}..{}]", s, m.pos, m.start, m.end);
+            }
+        }
     }
 }
