@@ -40,7 +40,12 @@ export class MarkerLayer {
   /** 直近に描画したマーカー数。ステータス表示用 */
   lastCount = 0;
 
-  constructor(private readonly paper: HTMLElement) {}
+  constructor(private paper: HTMLElement) {}
+
+  /** 本文を入れる要素が作り直されたときに繋ぎ直す。 */
+  rebind(paper: HTMLElement): void {
+    this.paper = paper;
+  }
 
   static get supported(): boolean {
     return typeof CSS !== "undefined" && "highlights" in CSS;

@@ -30,10 +30,15 @@ const MISMATCH_RETRY_LIMIT = 3;
 export interface SessionEvents {
   onStatus?: (msg: string, isError?: boolean) => void;
   onSynced?: () => void;
+  /** 人の手で本文が編集されたとき。プログラムからの差し替えでは呼ばれない */
+  onEdit?: () => void;
+  /** 本文を入れる要素が作り直されたとき。参照を持っている側は差し替える */
+  onElementReplaced?: (el: HTMLElement) => void;
 }
 
 export class Session {
   readonly marker: MarkerLayer;
+  private paper: HTMLElement;
   private composing = false;
   private timer: number | null = null;
   private syncing = false;
@@ -44,11 +49,42 @@ export class Session {
   private mismatchRetries = 0;
 
   constructor(
-    private readonly paper: HTMLElement,
+    paper: HTMLElement,
     private readonly events: SessionEvents = {},
   ) {
+    this.paper = paper;
     this.marker = new MarkerLayer(paper);
     this.bind();
+  }
+
+  /** 本文を入れている要素。作り直されることがあるので都度取得すること。 */
+  get element(): HTMLElement {
+    return this.paper;
+  }
+
+  /**
+   * 元に戻す履歴を捨てる。
+   *
+   * ブラウザの undo 履歴は contenteditable の要素ごとに積まれる。
+   * `replaceChildren` のようなプログラムからの差し替えはこの履歴に
+   * 載らないので、ファイルを開いたあとに元に戻すと、差し替え前の
+   * 編集が新しい本文に適用されて内容が混ざる。
+   *
+   * 実測では contenteditable を false→true にしても履歴は消えず、
+   * 要素そのものを作り直すと消える。そこで中身を移した新しい要素に
+   * 差し替える。
+   */
+  resetHistory(): void {
+    const fresh = this.paper.cloneNode(false) as HTMLElement;
+    while (this.paper.firstChild) fresh.appendChild(this.paper.firstChild);
+
+    const hadFocus = document.activeElement === this.paper;
+    this.paper.replaceWith(fresh);
+    this.paper = fresh;
+    this.marker.rebind(fresh);
+    this.bind();
+    if (hadFocus) fresh.focus();
+    this.events.onElementReplaced?.(fresh);
   }
 
   private bind(): void {
@@ -74,6 +110,7 @@ export class Session {
     });
 
     this.paper.addEventListener("input", (e) => {
+      this.events.onEdit?.();
       // composing フラグに加えて inputType でも弾く。
       // 変換中の打鍵は insertCompositionText として飛んでくる。
       const t = (e as InputEvent).inputType;
@@ -129,9 +166,16 @@ export class Session {
     }, DEBOUNCE_MS);
   }
 
-  /** 本文を差し替える。初期読み込みや正規化で使う。 */
+  /**
+   * 本文を差し替える。ファイルを開いたときや正規化で使う。
+   *
+   * プログラムからの差し替えはブラウザの undo 履歴に載らないため、
+   * そのままにすると差し替え前の編集が新しい本文に適用されて
+   * 内容が混ざる。ここで履歴を捨てて、この状態を底にする。
+   */
   async setText(text: string): Promise<void> {
     writeText(this.paper, text);
+    this.resetHistory();
     this.lastSent = null;
     await this.sync();
   }
@@ -200,6 +244,7 @@ export class Session {
           // 生の改行がここで確実に段落の切れ目になる。
           const caret = caretOffset(this.paper);
           writeText(this.paper, readText(this.paper));
+          this.resetHistory();
           if (caret !== null) setCaretOffset(this.paper, caret);
           this.schedule();
         } else {

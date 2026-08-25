@@ -51,7 +51,14 @@ function $<T extends HTMLElement>(id: string): T {
   return el as T;
 }
 
-const paper = $<HTMLElement>("paper");
+/**
+ * 本文を入れる要素。
+ *
+ * Session は undo 履歴を捨てるためにこの要素を作り直すことがある。
+ * 参照を握りっぱなしにすると古い要素を操作してしまうので、
+ * 差し替えの通知（onElementReplaced）で更新する。
+ */
+let paper = $<HTMLElement>("paper");
 const viewport = $<HTMLElement>("viewport");
 const statusCount = $<HTMLElement>("status-count");
 const statusPage = $<HTMLElement>("status-page");
@@ -77,6 +84,10 @@ const session = new Session(paper, {
     statusMsg.classList.toggle("err", Boolean(isError));
   },
   onSynced: () => updateStatus(),
+  onEdit: () => markDirty(),
+  onElementReplaced: (el) => {
+    paper = el;
+  },
 });
 
 const scroller = new VerticalScroller(viewport, () => layout.lines * layout.step);
@@ -349,10 +360,6 @@ window.addEventListener("keydown", (e) => {
 });
 
 /* ---------- 起動 ---------- */
-// 本文が編集されたら「保存されていない変更あり」にする。
-// setText によるプログラム的な差し替えでは input は発火しない。
-paper.addEventListener("input", markDirty);
-
 cellRange.disabled = fitCheck.checked;
 applyLayout(layout);
 fitCellToViewport();
