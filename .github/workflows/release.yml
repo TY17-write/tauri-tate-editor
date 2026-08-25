@@ -20,12 +20,13 @@ jobs:
 
     steps:
       - name: ソースを取得
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Node を用意
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          # 手元の開発環境と揃えておく
+          node-version: 24
           cache: npm
 
       - name: Rust を用意

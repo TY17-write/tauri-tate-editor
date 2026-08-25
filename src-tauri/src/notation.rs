@@ -19,6 +19,10 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 /// 対応する記法。
+///
+/// 画面に出す名前と、傍点を書けるかどうかは画面側（`notation.ts` の
+/// `NOTATIONS`）が持っている。両方に置くと食い違いのもとになるので、
+/// ここでは種類の区別だけを扱う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Notation {
@@ -30,22 +34,6 @@ pub enum Notation {
     Aozora,
     /// pixiv
     Pixiv,
-}
-
-impl Notation {
-    pub fn label(self) -> &'static str {
-        match self {
-            Notation::Narou => "小説家になろう",
-            Notation::Kakuyomu => "カクヨム",
-            Notation::Aozora => "青空文庫",
-            Notation::Pixiv => "pixiv",
-        }
-    }
-
-    /// その記法で傍点を書けるか。
-    pub fn supports_emphasis(self) -> bool {
-        matches!(self, Notation::Kakuyomu | Notation::Aozora)
-    }
 }
 
 /// 本文を分解したもの。
