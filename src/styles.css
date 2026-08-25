@@ -83,6 +83,17 @@ body {
 .ctl input[type="range"] {
   width: 110px;
 }
+.ctl label.sub {
+  font-size: 11px;
+  color: var(--ui-sub);
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  cursor: pointer;
+}
+.ctl input[type="range"]:disabled {
+  opacity: 0.45;
+}
 .row {
   display: flex;
   gap: 6px;
@@ -133,6 +144,10 @@ button.toggle.is-on {
 .paper {
   writing-mode: vertical-rl;
   text-orientation: mixed;
+  /* inline-size は「本文が入る領域」そのものでなければならない。
+     border-box のままだと枠線の分だけ内側が狭くなり、
+     1行が指定字数より 1 文字少なくなって最後の升が空く。 */
+  box-sizing: content-box;
   inline-size: calc(var(--chars) * var(--cell));
   min-block-size: calc(var(--lines) * var(--step));
   background-color: var(--paper);

@@ -104,11 +104,39 @@ function checkFontWarning(): void {
   }
 }
 
+/* ---------- 用紙を画面高さに合わせる ----------
+   1行の字数が多い判型（文庫の 42 字など）では、用紙の高さが
+   ウィンドウを超えて下が見切れる。文字サイズを下げて収める。
+   実際の文庫本も、1行が長い分だけ文字が小さい。 */
+const cellRange = $<HTMLInputElement>("cell");
+const fitCheck = $<HTMLInputElement>("fitHeight");
+
+function fitCellToViewport(): void {
+  if (!fitCheck.checked) return;
+  const style = getComputedStyle(viewport);
+  const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const border = 2; // 用紙の枠線
+  const usable = viewport.clientHeight - pad - border;
+  const cell = Math.floor(usable / layout.chars);
+  const clamped = Math.max(Number(cellRange.min), Math.min(Number(cellRange.max), cell));
+  if (clamped === layout.cell) return;
+  layout.cell = clamped;
+  cellRange.value = String(clamped);
+  applyLayout(layout);
+}
+
 function refreshLayout(): void {
   applyLayout(layout);
+  fitCellToViewport();
   checkFontWarning();
   updateStatus();
 }
+
+fitCheck.addEventListener("change", () => {
+  cellRange.disabled = fitCheck.checked;
+  refreshLayout();
+});
+new ResizeObserver(() => fitCellToViewport()).observe(viewport);
 
 const presetSel = $<HTMLSelectElement>("preset");
 const charsInput = $<HTMLInputElement>("chars");
@@ -134,9 +162,10 @@ linesInput.addEventListener("input", () => {
   presetSel.value = "custom";
   refreshLayout();
 });
-$<HTMLInputElement>("cell").addEventListener("input", (e) => {
-  layout.cell = Number((e.target as HTMLInputElement).value);
-  refreshLayout();
+cellRange.addEventListener("input", () => {
+  layout.cell = Number(cellRange.value);
+  applyLayout(layout);
+  updateStatus();
 });
 $<HTMLInputElement>("step").addEventListener("input", (e) => {
   layout.step = Number((e.target as HTMLInputElement).value);
@@ -204,7 +233,9 @@ window.addEventListener("keydown", (e) => {
 });
 
 /* ---------- 起動 ---------- */
+cellRange.disabled = fitCheck.checked;
 applyLayout(layout);
+fitCellToViewport();
 if (!MarkerLayer.supported) {
   statusMsg.textContent = "CSS Custom Highlight API が使えないため、マーカーは表示されません";
   statusMsg.classList.add("err");
