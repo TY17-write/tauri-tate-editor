@@ -82,7 +82,8 @@ pub struct StyleOptions {
 impl Default for StyleOptions {
     fn default() -> Self {
         Self {
-            long_sentence: 60,
+            // 小説の一文は長くなりがちなので、明らかに読みにくい水準に置く
+            long_sentence: 200,
             repeat_endings: 3,
             nearby_window: 60,
             // 小説の推敲でよく槍玉に挙がる語
@@ -396,11 +397,43 @@ mod tests {
 
     #[test]
     fn 長い文を指摘する() {
-        let long = "あ".repeat(80) + "。";
+        let long = "あ".repeat(220) + "。";
         let paras = vec![input(&long, &[])];
         let r = analyze(&paras, &StyleOptions::default());
         assert_eq!(r.sentences, 1);
         assert!(r.issues.iter().any(|i| i.kind == IssueKind::LongSentence));
+    }
+
+    #[test]
+    fn 既定では二百字までは長いと言わない() {
+        let ok = "あ".repeat(190) + "。";
+        let paras = vec![input(&ok, &[])];
+        let r = analyze(&paras, &StyleOptions::default());
+        assert!(!r.issues.iter().any(|i| i.kind == IssueKind::LongSentence));
+    }
+
+    #[test]
+    fn しきい値を変えられる() {
+        let text = "あ".repeat(80) + "。";
+        let paras = vec![input(&text, &[])];
+
+        let opts = StyleOptions {
+            long_sentence: 50,
+            ..StyleOptions::default()
+        };
+        assert!(analyze(&paras, &opts)
+            .issues
+            .iter()
+            .any(|i| i.kind == IssueKind::LongSentence));
+
+        let opts = StyleOptions {
+            long_sentence: 100,
+            ..StyleOptions::default()
+        };
+        assert!(!analyze(&paras, &opts)
+            .issues
+            .iter()
+            .any(|i| i.kind == IssueKind::LongSentence));
     }
 
     #[test]

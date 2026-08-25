@@ -137,6 +137,40 @@
             <button id="reportClose" type="button" title="閉じる">×</button>
           </div>
           <div class="report-summary" id="reportSummary"></div>
+
+          <details class="report-settings" id="reportSettings">
+            <summary>しきい値</summary>
+            <div class="settings-body">
+              <label>
+                <span>長い文</span>
+                <input type="number" id="optLongSentence" min="20" max="1000" step="10" />
+                <span class="unit">字を超えたら</span>
+              </label>
+              <label>
+                <span>文末の重なり</span>
+                <input type="number" id="optRepeatEndings" min="2" max="10" />
+                <span class="unit">文続いたら</span>
+              </label>
+              <label>
+                <span>近くの繰り返し</span>
+                <input type="number" id="optNearbyWindow" min="10" max="400" step="10" />
+                <span class="unit">字以内なら</span>
+              </label>
+              <label>
+                <span>使いすぎ</span>
+                <input type="number" id="optOverusePer1000" min="0.5" max="50" step="0.5" />
+                <span class="unit">回/千字から</span>
+              </label>
+              <label class="stack">
+                <span>数える語（1 行に 1 つ）</span>
+                <textarea id="optOveruseWords" rows="6" spellcheck="false"></textarea>
+              </label>
+              <div class="row">
+                <button id="optReset" type="button">既定に戻す</button>
+              </div>
+            </div>
+          </details>
+
           <div class="report-filter" id="reportFilter"></div>
           <ul class="report-list" id="reportList"></ul>
         </aside>

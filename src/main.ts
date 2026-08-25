@@ -11,8 +11,15 @@ import { MarkerLayer } from "./editor/marker";
 import { SearchLayer } from "./editor/search";
 import { bodyChars, buildOutline, parseHeading } from "./editor/outline";
 import type { Heading } from "./editor/outline";
-import { ISSUE_LABEL, fetchReport, per1000 } from "./editor/style";
-import type { Issue, IssueKind, StyleReport } from "./editor/style";
+import {
+  DEFAULT_OPTIONS,
+  ISSUE_LABEL,
+  fetchReport,
+  loadOptions,
+  per1000,
+  saveOptions,
+} from "./editor/style";
+import type { Issue, IssueKind, StyleOptions, StyleReport } from "./editor/style";
 import { VerticalScroller } from "./editor/scroll";
 import {
   DEFAULT_LAYOUT,
@@ -456,6 +463,76 @@ const ISSUE_KINDS: IssueKind[] = [
   "overuse",
 ];
 const shownKinds = new Set<IssueKind>(ISSUE_KINDS);
+let styleOptions: StyleOptions = loadOptions();
+
+/* ---- しきい値の設定 ---- */
+const optLongSentence = $<HTMLInputElement>("optLongSentence");
+const optRepeatEndings = $<HTMLInputElement>("optRepeatEndings");
+const optNearbyWindow = $<HTMLInputElement>("optNearbyWindow");
+const optOverusePer1000 = $<HTMLInputElement>("optOverusePer1000");
+const optOveruseWords = $<HTMLTextAreaElement>("optOveruseWords");
+
+/** 設定値を入力欄へ流し込む。 */
+function fillOptionInputs(o: StyleOptions): void {
+  optLongSentence.value = String(o.longSentence);
+  optRepeatEndings.value = String(o.repeatEndings);
+  optNearbyWindow.value = String(o.nearbyWindow);
+  optOverusePer1000.value = String(o.overusePer1000);
+  optOveruseWords.value = o.overuseWords.join("\n");
+}
+
+/** 入力欄から設定値を読む。範囲外の値は既定に寄せる。 */
+function readOptionInputs(): StyleOptions {
+  const num = (el: HTMLInputElement, fallback: number): number => {
+    const v = Number(el.value);
+    if (!Number.isFinite(v)) return fallback;
+    const min = Number(el.min);
+    const max = Number(el.max);
+    return Math.min(Number.isFinite(max) ? max : v, Math.max(Number.isFinite(min) ? min : v, v));
+  };
+  return {
+    longSentence: Math.round(num(optLongSentence, DEFAULT_OPTIONS.longSentence)),
+    repeatEndings: Math.round(num(optRepeatEndings, DEFAULT_OPTIONS.repeatEndings)),
+    nearbyWindow: Math.round(num(optNearbyWindow, DEFAULT_OPTIONS.nearbyWindow)),
+    overusePer1000: num(optOverusePer1000, DEFAULT_OPTIONS.overusePer1000),
+    overuseWords: optOveruseWords.value
+      .split("\n")
+      .map((w) => w.trim())
+      .filter((w) => w.length > 0),
+  };
+}
+
+let optionTimer: number | null = null;
+
+/** 設定が変わったら保存して調べ直す。打鍵のたびだと重いので少し待つ。 */
+function onOptionsChanged(): void {
+  if (optionTimer !== null) window.clearTimeout(optionTimer);
+  optionTimer = window.setTimeout(() => {
+    optionTimer = null;
+    styleOptions = readOptionInputs();
+    saveOptions(styleOptions);
+    void refreshReport();
+  }, 350);
+}
+
+for (const el of [
+  optLongSentence,
+  optRepeatEndings,
+  optNearbyWindow,
+  optOverusePer1000,
+  optOveruseWords,
+]) {
+  el.addEventListener("input", onOptionsChanged);
+}
+
+$<HTMLButtonElement>("optReset").addEventListener("click", () => {
+  styleOptions = { ...DEFAULT_OPTIONS };
+  fillOptionInputs(styleOptions);
+  saveOptions(styleOptions);
+  void refreshReport();
+});
+
+fillOptionInputs(styleOptions);
 
 function renderSummary(r: StyleReport): void {
   const rows: [string, string][] = [
@@ -550,7 +627,7 @@ async function refreshReport(): Promise<void> {
     li.textContent = "調べています…";
     reportList.appendChild(li);
 
-    const r = await fetchReport();
+    const r = await fetchReport(styleOptions);
     renderSummary(r);
     renderFilter(r);
     renderIssues(r);
