@@ -129,6 +129,65 @@ button.toggle.is-on {
   color: #fff;
 }
 
+/* ---------- 検索バー ---------- */
+.findbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 7px 14px;
+  background: #eef1f6;
+  border-bottom: 1px solid var(--ui-border);
+}
+.findbar[hidden] {
+  display: none;
+}
+.findbar .ctl {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.findbar .ctl > span {
+  font-size: 11px;
+  color: var(--ui-sub);
+}
+.findbar input[type="search"],
+.findbar input[type="text"] {
+  font-size: 13px;
+  padding: 3px 7px;
+  width: 190px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  font-family: inherit;
+}
+.findbar input.invalid {
+  border-color: #c0392b;
+  background: #fdf1f0;
+}
+.find-count {
+  font-size: 12px;
+  color: var(--ui-sub);
+  font-variant-numeric: tabular-nums;
+  min-width: 6em;
+}
+.find-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 8px;
+  color: var(--ui-sub);
+}
+
+/* 検索のヒット。品詞マーカーとは別のハイライト名なので共存できる */
+::highlight(search-hit) {
+  background-color: rgba(255, 215, 0, 0.45);
+}
+::highlight(search-current) {
+  background-color: rgba(255, 140, 0, 0.75);
+}
+
 /* ---------- 用紙 ---------- */
 .viewport {
   overflow-x: auto;

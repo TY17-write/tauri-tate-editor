@@ -39,6 +39,13 @@ export class MarkerLayer {
   };
   /** 直近に描画したマーカー数。ステータス表示用 */
   lastCount = 0;
+  /**
+   * いま CSS.highlights に登録している名前。
+   *
+   * `CSS.highlights.clear()` は検索など他の機能が登録したものまで
+   * 消してしまうので、自分が入れた分だけを消す。
+   */
+  private registered: string[] = [];
 
   constructor(private paper: HTMLElement) {}
 
@@ -81,8 +88,15 @@ export class MarkerLayer {
 
   clear(): void {
     this.marks.clear();
-    if (MarkerLayer.supported) CSS.highlights.clear();
+    this.clearOwn();
     this.lastCount = 0;
+  }
+
+  /** 自分が登録したハイライトだけを取り下げる。 */
+  private clearOwn(): void {
+    if (!MarkerLayer.supported) return;
+    for (const name of this.registered) CSS.highlights.delete(name);
+    this.registered = [];
   }
 
   /** 現在の DOM から「段落要素 → その段落のマーカー」を作る。 */
@@ -105,7 +119,7 @@ export class MarkerLayer {
 
     // 傍線（右）だけは Highlight API では描けないので span を挿す
     if (this.usesDom) {
-      if (MarkerLayer.supported) CSS.highlights.clear();
+      this.clearOwn();
       for (const { el, marks } of pairs) {
         if (!this.opts.enabled) {
           clearSideMarks(el);
@@ -122,7 +136,7 @@ export class MarkerLayer {
     for (const { el } of pairs) clearSideMarks(el);
 
     if (!MarkerLayer.supported) return;
-    CSS.highlights.clear();
+    this.clearOwn();
     if (!this.opts.enabled) return;
 
     const buckets = new Map<PosTag, Range[]>();
@@ -148,7 +162,9 @@ export class MarkerLayer {
 
     for (const [pos, ranges] of buckets) {
       if (ranges.length === 0) continue;
-      CSS.highlights.set(`${pos}-${this.opts.style}`, new Highlight(...ranges));
+      const name = `${pos}-${this.opts.style}`;
+      CSS.highlights.set(name, new Highlight(...ranges));
+      this.registered.push(name);
       this.lastCount += ranges.length;
     }
   }

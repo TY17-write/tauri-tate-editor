@@ -8,6 +8,7 @@
 
 import { Session } from "./editor/session";
 import { MarkerLayer } from "./editor/marker";
+import { SearchLayer } from "./editor/search";
 import { VerticalScroller } from "./editor/scroll";
 import {
   DEFAULT_LAYOUT,
@@ -84,9 +85,14 @@ const session = new Session(paper, {
     statusMsg.classList.toggle("err", Boolean(isError));
   },
   onSynced: () => updateStatus(),
-  onEdit: () => markDirty(),
+  onEdit: () => {
+    markDirty();
+    // 本文が変わるとヒットの位置がずれるので、検索し直す
+    if (!findbar.hidden) scheduleFind();
+  },
   onElementReplaced: (el) => {
     paper = el;
+    search.rebind(el);
   },
 });
 
@@ -329,6 +335,116 @@ window.addEventListener("beforeunload", (e) => {
   e.preventDefault();
 });
 
+/* ---------- 検索と置換 ---------- */
+const findbar = $<HTMLElement>("findbar");
+const findQuery = $<HTMLInputElement>("findQuery");
+const findReplace = $<HTMLInputElement>("findReplace");
+const findCount = $<HTMLElement>("findCount");
+const findRegex = $<HTMLInputElement>("findRegex");
+const findCase = $<HTMLInputElement>("findCase");
+
+const search = new SearchLayer(paper);
+let findTimer: number | null = null;
+
+function findOptions() {
+  return { regex: findRegex.checked, caseSensitive: findCase.checked };
+}
+
+/** 検索し直して件数表示を更新する。 */
+function runFind(): void {
+  const n = search.run(findQuery.value, findOptions());
+  findQuery.classList.toggle("invalid", n < 0);
+  if (n < 0) {
+    findCount.textContent = "正規表現が不正";
+  } else if (n === 0) {
+    findCount.textContent = findQuery.value ? "見つかりません" : "—";
+  } else {
+    findCount.textContent = `${search.position} / ${n} 件`;
+  }
+}
+
+/** 入力のたびに検索すると重いので少し待つ。 */
+function scheduleFind(): void {
+  if (findTimer !== null) window.clearTimeout(findTimer);
+  findTimer = window.setTimeout(() => {
+    findTimer = null;
+    runFind();
+  }, 180);
+}
+
+/** 次／前のヒットへ移り、見えるところまでスクロールする。 */
+function stepFind(dir: number): void {
+  const range = search.step(dir);
+  if (!range) return;
+  scroller.revealRange(range);
+  findCount.textContent = `${search.position} / ${search.count} 件`;
+}
+
+function openFind(): void {
+  findbar.hidden = false;
+  // 本文を選択していたら、それを検索語の初期値にする
+  const sel = window.getSelection()?.toString() ?? "";
+  if (sel && !sel.includes("\n")) findQuery.value = sel;
+  findQuery.focus();
+  findQuery.select();
+  runFind();
+}
+
+function closeFind(): void {
+  findbar.hidden = true;
+  search.clear();
+  findCount.textContent = "—";
+  paper.focus();
+}
+
+findQuery.addEventListener("input", scheduleFind);
+findRegex.addEventListener("change", runFind);
+findCase.addEventListener("change", runFind);
+
+findQuery.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    stepFind(e.shiftKey ? -1 : 1);
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    closeFind();
+  }
+});
+findReplace.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeFind();
+  }
+});
+
+$<HTMLButtonElement>("findNext").addEventListener("click", () => stepFind(1));
+$<HTMLButtonElement>("findPrev").addEventListener("click", () => stepFind(-1));
+$<HTMLButtonElement>("findClose").addEventListener("click", closeFind);
+$<HTMLButtonElement>("btnFind").addEventListener("click", openFind);
+
+$<HTMLButtonElement>("findReplaceOne").addEventListener("click", () => {
+  if (search.count === 0) return;
+  if (search.position === 0) stepFind(1);
+  const range = search.currentRange();
+  if (range) scroller.revealRange(range);
+  if (search.replaceCurrent(findReplace.value)) {
+    markDirty();
+    // 置換で本文が変わったので、位置を取り直す
+    window.setTimeout(runFind, 0);
+  }
+});
+
+$<HTMLButtonElement>("findReplaceAll").addEventListener("click", () => {
+  const n = search.count;
+  if (n === 0) return;
+  if (!window.confirm(`${n} 件を「${findReplace.value}」に置き換えます。よろしいですか。`)) return;
+  const done = search.replaceAll(findReplace.value);
+  markDirty();
+  statusMsg.textContent = `${done} 件を置き換えました`;
+  statusMsg.classList.remove("err");
+  window.setTimeout(runFind, 0);
+});
+
 /* ---------- ページ送り ---------- */
 window.addEventListener("keydown", (e) => {
   // ファイル操作は本文にフォーカスがあっても効かせる
@@ -344,6 +460,29 @@ window.addEventListener("keydown", (e) => {
       void doSave(e.shiftKey);
       return;
     }
+    if (k === "f") {
+      e.preventDefault();
+      openFind();
+      return;
+    }
+    if (k === "h") {
+      e.preventDefault();
+      openFind();
+      findReplace.focus();
+      return;
+    }
+  }
+
+  // F3 は本文にフォーカスがあっても効かせる
+  if (e.key === "F3" && !findbar.hidden) {
+    e.preventDefault();
+    stepFind(e.shiftKey ? -1 : 1);
+    return;
+  }
+  if (e.key === "Escape" && !findbar.hidden) {
+    e.preventDefault();
+    closeFind();
+    return;
   }
 
   if (e.target === paper) return;
@@ -355,6 +494,9 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
   } else if (e.key === "Home" && e.ctrlKey) {
     scroller.toHead();
+    e.preventDefault();
+  } else if (e.key === "End" && e.ctrlKey) {
+    scroller.toTail();
     e.preventDefault();
   }
 });
@@ -369,6 +511,8 @@ if (!MarkerLayer.supported) {
   statusMsg.classList.add("err");
 }
 void session.setText(SAMPLE).then(() => {
+  // 本文が入ってからでないとスクロール量を測れない
+  scroller.calibrate();
   scroller.toHead();
   paper.focus();
 });

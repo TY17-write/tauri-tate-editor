@@ -17,6 +17,7 @@
             <button id="btnOpen" type="button" title="Ctrl+O">開く</button>
             <button id="btnSave" type="button" title="Ctrl+S">保存</button>
             <button id="btnSaveAs" type="button" title="Ctrl+Shift+S">名前を付けて</button>
+            <button id="btnFind" type="button" title="Ctrl+F">検索</button>
           </div>
         </div>
         <div class="ctl">
@@ -89,6 +90,29 @@
           </div>
         </div>
       </header>
+
+      <div class="findbar" id="findbar" hidden>
+        <label class="ctl">
+          <span>検索</span>
+          <input type="search" id="findQuery" placeholder="探す文字列" autocomplete="off" />
+        </label>
+        <label class="ctl">
+          <span>置換</span>
+          <input type="text" id="findReplace" placeholder="置き換える文字列" autocomplete="off" />
+        </label>
+        <div class="row">
+          <button id="findPrev" type="button" title="Shift+Enter">前へ</button>
+          <button id="findNext" type="button" title="Enter">次へ</button>
+          <button id="findReplaceOne" type="button">置換</button>
+          <button id="findReplaceAll" type="button">すべて置換</button>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="findRegex" /> 正規表現</label>
+          <label><input type="checkbox" id="findCase" /> 大小を区別</label>
+        </div>
+        <span id="findCount" class="find-count">—</span>
+        <button id="findClose" type="button" class="find-close" title="Esc">×</button>
+      </div>
 
       <main class="viewport" id="viewport">
         <div
