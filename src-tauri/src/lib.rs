@@ -13,7 +13,7 @@ use tauri::State;
 
 use document::{AnalyzeResult, Document, ParaId, ParaView};
 use io::LoadResult;
-use notation::{Notation, NotationCount, Piece};
+use notation::{EmphasisEdit, Notation, NotationCount, NotationForms, Piece};
 use stats::{StyleOptions, StyleReport};
 
 /// 本文の正本。フロントエンドは表示用のミラーだけを持つ。
@@ -135,6 +135,39 @@ fn preview_pieces(
         .split('\n')
         .map(|l| notation::pieces(l, notation_kind))
         .collect())
+}
+
+/// その記法でのルビと傍点の書き方（型紙）を返す。
+///
+/// プレビューでルビを直したとき、画面側はこれを使って記法を
+/// 組み立て直す。書き方の定義を画面側にも書くと食い違うため、
+/// Rust の表を渡して使わせる。
+#[tauri::command]
+fn notation_forms(notation_kind: Notation) -> NotationForms {
+    notation::forms(notation_kind)
+}
+
+/// 一行だけをプレビュー用の部品に分ける。
+///
+/// 傍点を付け外ししたあとに、その段落だけを組み直すのに使う。
+/// 本文には触らない（正本を書き換えるのは `set_text` の役目）。
+#[tauri::command]
+fn line_pieces(line: String, notation_kind: Notation) -> Vec<Piece> {
+    notation::pieces(&line, notation_kind)
+}
+
+/// 行の指定範囲に傍点を付ける、または外す。
+///
+/// すでに傍点が掛かっていれば外す。ルビに掛かる範囲には付けられない
+/// ので None を返す。位置は UTF-16 で数える。
+#[tauri::command]
+fn toggle_emphasis(
+    line: String,
+    start: u32,
+    end: u32,
+    notation_kind: Notation,
+) -> Option<EmphasisEdit> {
+    notation::toggle_emphasis(&line, start, end, notation_kind)
 }
 
 /// ファイルを読み込み、本文として取り込む。
@@ -261,6 +294,9 @@ pub fn run() {
             convert_notation,
             count_notation,
             preview_pieces,
+            notation_forms,
+            line_pieces,
+            toggle_emphasis,
             open_file,
             save_file,
             autosave,

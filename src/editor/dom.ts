@@ -54,68 +54,95 @@ export function writeText(paper: HTMLElement, text: string): void {
    本文先頭からの文字オフセットで持ち回る。
    ============================================================ */
 
-/** キャレット位置を、本文先頭からの文字数で返す。 */
-export function caretOffset(paper: HTMLElement): number | null {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return null;
-  const range = sel.getRangeAt(0);
-  if (!paper.contains(range.startContainer)) return null;
-
+/**
+ * ノードと中の位置を、本文先頭からの文字数に直す。
+ *
+ * 段落の区切りも 1 文字（改行）として数える。
+ * Range#toString は textContent 相当なので、傍線モードの span や
+ * プレビューの塊をまたいでも文字数はそのまま数えられる。
+ */
+function offsetOf(paper: HTMLElement, node: Node, offset: number): number | null {
+  if (!paper.contains(node)) return null;
   const probe = document.createRange();
   probe.selectNodeContents(paper);
-  probe.setEnd(range.startContainer, range.startOffset);
-  // 段落の区切りも 1 文字（改行）として数える。
-  // Range#toString は textContent 相当なので、傍線モードの span を
-  // またいでも文字数はそのまま数えられる。
-  const before = probe.cloneContents();
-  const paras = before.querySelectorAll("p").length;
+  probe.setEnd(node, offset);
+  const paras = probe.cloneContents().querySelectorAll("p").length;
   return probe.toString().length + Math.max(0, paras - 1);
 }
 
-/** 文字オフセットで指定した位置へキャレットを戻す。 */
-export function setCaretOffset(paper: HTMLElement, offset: number): void {
+/** 文字オフセットに当たる DOM の位置を探す。 */
+function pointOf(paper: HTMLElement, offset: number): { node: Node; offset: number } | null {
   let remain = offset;
   for (const el of Array.from(paper.children)) {
     const len = paraText(el).length;
     if (remain <= len) {
-      const sel = window.getSelection();
-      const range = document.createRange();
-
       // 段落内のテキストノードを順に辿る。傍線モードでは
       // sidemark の span に分かれているので、先頭の子だけを
       // 見ていると span の内側へキャレットを戻せない。
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let acc = 0;
-      let placed = false;
       let node: Node | null;
       while ((node = walker.nextNode())) {
         const l = (node as Text).length;
-        if (acc + l >= remain) {
-          range.setStart(node, remain - acc);
-          placed = true;
-          break;
-        }
+        if (acc + l >= remain) return { node, offset: remain - acc };
         acc += l;
       }
-      if (!placed) range.setStart(el, el.childNodes.length);
-
-      range.collapse(true);
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-      return;
+      return { node: el, offset: el.childNodes.length };
     }
     remain -= len + 1; // 段落の区切り分
   }
   // 行き過ぎたら末尾へ
   const last = paper.lastElementChild;
-  if (last) {
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(last);
-    range.collapse(false);
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+  return last ? { node: last, offset: last.childNodes.length } : null;
+}
+
+/** キャレット位置を、本文先頭からの文字数で返す。 */
+export function caretOffset(paper: HTMLElement): number | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  return offsetOf(paper, range.startContainer, range.startOffset);
+}
+
+/**
+ * いま選んでいる範囲を、本文先頭からの文字数で返す。
+ *
+ * マーカーの描画が DOM を書き換えるとき、キャレットだけでなく
+ * 選択範囲も保つのに使う。始点だけを覚えて戻すと、選んでいた
+ * 範囲が畳まれてしまう。
+ */
+export function selectionOffsets(paper: HTMLElement): { start: number; end: number } | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const start = offsetOf(paper, range.startContainer, range.startOffset);
+  const end = offsetOf(paper, range.endContainer, range.endOffset);
+  if (start === null || end === null) return null;
+  return { start, end };
+}
+
+/** 文字オフセットで指定した位置へキャレットを戻す。 */
+export function setCaretOffset(paper: HTMLElement, offset: number): void {
+  setSelectionOffsets(paper, offset, offset);
+}
+
+/** 文字オフセットで指定した範囲を選び直す。 */
+export function setSelectionOffsets(paper: HTMLElement, start: number, end: number): void {
+  const head = pointOf(paper, start);
+  const tail = pointOf(paper, Math.max(start, end));
+  if (!head || !tail) return;
+
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.setStart(head.node, head.offset);
+  try {
+    range.setEnd(tail.node, tail.offset);
+  } catch {
+    // 終点が始点より前になることはないはずだが、崩れていたら畳む
+    range.collapse(true);
   }
+  sel?.removeAllRanges();
+  sel?.addRange(range);
 }
 
 /* ============================================================
@@ -219,6 +246,10 @@ export function normalizeStructure(paper: HTMLElement): boolean {
  *
  * ブラウザ任せにすると <div> や <br> が入って構造が崩れるため、
  * beforeinput の insertParagraph を横取りしてここを呼ぶ。
+ *
+ * 段落の中身をテキストとして組み直してはいけない。プレビューでは
+ * ルビや傍点の要素が入っていて、textContent で組み直すと読みが
+ * 本文に混ざって消える。Range で切り出して、要素はそのまま移す。
  */
 export function splitAtCaret(paper: HTMLElement): void {
   const sel = window.getSelection();
@@ -229,28 +260,25 @@ export function splitAtCaret(paper: HTMLElement): void {
   // 選択範囲があれば先に消す
   if (!range.collapsed) range.deleteContents();
 
-  const para = findPara(paper, range.startContainer);
+  const para = paraOf(paper, range.startContainer);
   if (!para) return;
 
-  const node = para.firstChild;
-  const clean = node && node.nodeType === Node.TEXT_NODE ? (node as Text).data : "";
+  // ルビや傍点の中で割ると、記法が二つに割れて意味が変わってしまう。
+  // 塊の中にキャレットがあるときは、塊の後ろを切れ目にする。
+  const atom = findAtom(para, range.startContainer);
+  const cut = document.createRange();
+  if (atom) cut.setStartAfter(atom);
+  else cut.setStart(range.startContainer, range.startOffset);
+  cut.setEnd(para, para.childNodes.length);
 
-  let at = 0;
-  if (node && range.startContainer === node) {
-    at = range.startOffset;
-  } else if (range.startContainer === para) {
-    at = range.startOffset === 0 ? 0 : clean.length;
-  }
+  const next = createPara("");
+  next.appendChild(cut.extractContents());
 
-  const head = clean.slice(0, at);
-  const tail = clean.slice(at);
-
-  // 空になる側はテキストノードを持たせない。ダミー文字を入れると
-  // Rust へ送る本文とずれてマーカーの位置が狂う。
-  if (head.length) para.textContent = head;
-  else para.replaceChildren();
-
-  const next = createPara(tail);
+  // 切り出しで分かれたテキストノードを繋ぎ直す。空になった側は
+  // normalize() が空のテキストノードごと落としてくれる。
+  // ダミー文字を入れてはいけない（Rust へ送る本文とずれる）。
+  para.normalize();
+  next.normalize();
   para.after(next);
 
   const r = document.createRange();
@@ -286,46 +314,54 @@ export function insertTextAtCaret(paper: HTMLElement, text: string): void {
   }
 }
 
-/** 改行を含まない文字列をキャレット位置に入れる。 */
+/**
+ * 改行を含まない文字列をキャレット位置に入れる。
+ *
+ * 段落の本文を textContent で組み立て直してはいけない。プレビューでは
+ * ルビの読みまで本文に混ざってしまう。Range に入れてから、分かれた
+ * テキストノードを normalize() で繋ぎ直す。
+ *
+ * テキストノードを分けたままにすると、段落内のノードが増えて
+ * マーカーの位置合わせが余計に複雑になる。normalize() のあとは
+ * 記法表示ならテキストノード 1 つに戻る。
+ */
 function insertPlain(paper: HTMLElement, s: string): void {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
   const range = sel.getRangeAt(0);
 
-  const para = findPara(paper, range.startContainer);
+  const para = paraOf(paper, range.startContainer);
   if (!para) return;
 
-  // テキストノードを分裂させると段落内のノードが増え、
-  // マーカーの Range を張る相手が分からなくなる。
-  // 段落の本文を組み立て直して、テキストノード 1 つに保つ。
-  const before = para.textContent ?? "";
-  let at = before.length;
-  const node = para.firstChild;
-  if (node && node.nodeType === Node.TEXT_NODE && range.startContainer === node) {
-    at = range.startOffset;
-  } else if (range.startContainer === para) {
-    at = range.startOffset === 0 ? 0 : before.length;
-  }
-
-  para.textContent = before.slice(0, at) + s + before.slice(at);
-
-  const target = para.firstChild;
-  const r = document.createRange();
-  if (target && target.nodeType === Node.TEXT_NODE) {
-    r.setStart(target, Math.min(at + s.length, (target as Text).length));
-  } else {
-    r.setStart(para, 0);
-  }
-  r.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(r);
+  // normalize() でノードが入れ替わるので、キャレットは文字数で覚える
+  const at = caretOffset(paper);
+  range.insertNode(document.createTextNode(s));
+  para.normalize();
+  if (at !== null) setCaretOffset(paper, at + s.length);
 }
 
 /** ノードが属する段落要素を探す。 */
-function findPara(paper: HTMLElement, node: Node): HTMLElement | null {
+export function paraOf(paper: HTMLElement, node: Node): HTMLElement | null {
   let cur: Node | null = node;
   while (cur && cur !== paper) {
     if (cur.nodeType === Node.ELEMENT_NODE && (cur as Element).tagName === "P") {
+      return cur as HTMLElement;
+    }
+    cur = cur.parentNode;
+  }
+  return null;
+}
+
+/**
+ * ノードが属するルビ・傍点・見出し記号の塊を探す。
+ *
+ * プレビューの塊は `data-src` を持っている。段落そのものに行き
+ * 当たったら塊の外。
+ */
+function findAtom(para: HTMLElement, node: Node): HTMLElement | null {
+  let cur: Node | null = node;
+  while (cur && cur !== para) {
+    if (cur.nodeType === Node.ELEMENT_NODE && (cur as HTMLElement).dataset.src !== undefined) {
       return cur as HTMLElement;
     }
     cur = cur.parentNode;

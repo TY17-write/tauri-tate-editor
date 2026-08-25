@@ -15,48 +15,173 @@
  *  ・IME 変換中に触ると入力が壊れる
  * という制約が戻ってくる。呼び出し側は入力が止まってから、
  * かつ変換中でないときにだけ呼ぶこと。
+ *
+ * プレビューでは段落にルビや傍点の塊が混ざる。塊は途中で切れない
+ * ので、掛かったときは塊そのものに印を付ける。段落の中身を
+ * textContent で組み直してはいけない（塊が消える）。
  */
 
+import { readSegments, srcLength } from "./segment";
+import { ALL_POS } from "./types";
 import type { Mark, PosTag } from "./types";
 
-/** 段落に span を挿して傍線を引く。 */
-export function paintSideMarks(el: HTMLElement, marks: Mark[], visible: Set<PosTag>): void {
-  const text = el.textContent ?? "";
-  const targets = marks
-    .filter((m) => visible.has(m.pos))
-    .filter((m) => m.start < m.end && m.end <= text.length)
-    .sort((a, b) => a.start - b.start);
-
-  if (targets.length === 0) {
-    // 元のテキストノード1つだけの状態に戻す
-    if (el.childNodes.length !== 1 || el.firstChild?.nodeType !== Node.TEXT_NODE) {
-      if (text.length) el.textContent = text;
-      else el.replaceChildren();
-    }
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  let at = 0;
-  for (const m of targets) {
-    // 範囲が重なっている場合は後ろ側を諦める（線の二重掛けを避ける）
-    if (m.start < at) continue;
-    if (m.start > at) frag.appendChild(document.createTextNode(text.slice(at, m.start)));
-    const span = document.createElement("span");
-    span.className = `sidemark sidemark-${m.pos}`;
-    span.textContent = text.slice(m.start, m.end);
-    frag.appendChild(span);
-    at = m.end;
-  }
-  if (at < text.length) frag.appendChild(document.createTextNode(text.slice(at)));
-
-  el.replaceChildren(frag);
+/** 塊の中の一区切り。位置は塊の中の表示文字で数える。 */
+interface AtomPart {
+  start: number;
+  end: number;
+  pos: PosTag;
 }
 
-/** span を取り除いて、テキストノード1つだけの状態に戻す。 */
+/**
+ * 段落に span を挿して傍線を引く。引いた本数を返す。
+ *
+ * 元の並びに戻してから引き直すので、続けて呼んでも線は増えない。
+ */
+export function paintSideMarks(el: HTMLElement, marks: Mark[], visible: Set<PosTag>): number {
+  clearSideMarks(el);
+
+  const segs = readSegments(el);
+  const len = srcLength(segs);
+
+  const targets: Mark[] = [];
+  let taken = 0;
+  for (const m of marks
+    .filter((m) => visible.has(m.pos))
+    .filter((m) => m.start < m.end && m.end <= len)
+    .sort((a, b) => a.start - b.start)) {
+    // 範囲が重なっている場合は後ろ側を諦める（線の二重掛けを避ける）
+    if (m.start < taken) continue;
+    targets.push(m);
+    taken = m.end;
+  }
+  if (targets.length === 0) return 0;
+
+  const frag = document.createDocumentFragment();
+  const parts = new Map<HTMLElement, AtomPart[]>();
+  for (const s of segs) {
+    if (s.atom) {
+      if (s.atom.classList.contains("bouten")) {
+        // 傍点の右脇にはゴマ点が出ている。そこへ傍線を引くと
+        // 点と線が重なって読めなくなるので、中を色で示す
+        parts.set(
+          s.atom,
+          targets
+            .filter((m) => m.start < s.shownEnd && m.end > s.shownStart)
+            .map((m) => ({
+              start: Math.max(m.start, s.shownStart) - s.shownStart,
+              end: Math.min(m.end, s.shownEnd) - s.shownStart,
+              pos: m.pos,
+            })),
+        );
+      } else {
+        // ルビは塊が最小の単位。掛かっていれば丸ごと線を引く
+        const hit = targets.find((m) => m.start < s.shownEnd && m.end > s.shownStart);
+        if (hit) s.atom.classList.add("sidemark", `sidemark-${hit.pos}`);
+      }
+      frag.appendChild(s.atom);
+      continue;
+    }
+
+    const text = s.text?.data ?? "";
+    let cut = 0;
+    for (const m of targets) {
+      const a = Math.max(m.start, s.start) - s.start;
+      const b = Math.min(m.end, s.end) - s.start;
+      if (a >= b) continue;
+      if (a > cut) frag.appendChild(document.createTextNode(text.slice(cut, a)));
+      const span = document.createElement("span");
+      span.className = `sidemark sidemark-${m.pos}`;
+      span.textContent = text.slice(a, b);
+      frag.appendChild(span);
+      cut = b;
+    }
+    if (cut < text.length) frag.appendChild(document.createTextNode(text.slice(cut)));
+  }
+
+  el.replaceChildren(frag);
+  // 段落の中の傍点はすべて塗り直す。掛からなくなったものは空になる
+  for (const atom of Array.from(el.querySelectorAll<HTMLElement>(".bouten"))) {
+    paintAtomMarks(atom, parts.get(atom) ?? []);
+  }
+  return targets.length;
+}
+
+/**
+ * 印を取り除いて元の並びに戻す。
+ *
+ * 挿した span は外して中身を親に戻し、塊に付けた印は class だけ
+ * 外す。最後に normalize() で分かれたテキストノードを繋ぎ直す。
+ * 記法表示では「段落の中身はテキストノード1つ」が前提になっている。
+ */
 export function clearSideMarks(el: HTMLElement): void {
-  if (!el.querySelector(".sidemark")) return;
-  const text = el.textContent ?? "";
-  if (text.length) el.textContent = text;
-  else el.replaceChildren();
+  const marked = Array.from(el.querySelectorAll<HTMLElement>(".sidemark"));
+  if (marked.length === 0) return;
+
+  for (const e of marked) {
+    if (e.dataset.src !== undefined) {
+      // ルビや傍点の塊。要素は残して印だけ外す
+      e.classList.remove("sidemark");
+      for (const pos of ALL_POS) e.classList.remove(`sidemark-${pos}`);
+      continue;
+    }
+    const parent = e.parentNode;
+    if (!parent) continue;
+    while (e.firstChild) parent.insertBefore(e.firstChild, e);
+    parent.removeChild(e);
+  }
+
+  el.normalize();
+}
+
+/**
+ * 傍点の塊の中を、掛かった語ごとに span で囲む。
+ *
+ * ハイライトはゴマ点を潰すので使えず、塊まるごとを色付けすると
+ * 解析した語と対応しなくなる。要素の背景は文字の枠の中しか塗らない
+ * ので、点には掛からない。
+ *
+ * 直す必要がなければ何もしない。DOM を書き換えたときだけ true を
+ * 返す（呼び出し側がキャレットを戻すかどうかの判断に使う）。
+ */
+export function paintAtomMarks(atom: HTMLElement, parts: AtomPart[]): boolean {
+  const sorted = [...parts].sort((a, b) => a.start - b.start);
+  const sig = sorted.map((p) => `${p.start}:${p.end}:${p.pos}`).join(",");
+  if ((atom.dataset.marksig ?? "") === sig) return false;
+
+  const text = atom.textContent ?? "";
+  const frag = document.createDocumentFragment();
+  let cut = 0;
+  for (const part of sorted) {
+    const a = Math.max(0, Math.min(part.start, text.length));
+    const b = Math.max(a, Math.min(part.end, text.length));
+    // 重なっている場合は後ろ側を諦める（色の二重掛けを避ける）
+    if (a >= b || a < cut) continue;
+    if (a > cut) frag.appendChild(document.createTextNode(text.slice(cut, a)));
+    const span = document.createElement("span");
+    span.className = `bmark bmark-${part.pos}`;
+    span.textContent = text.slice(a, b);
+    frag.appendChild(span);
+    cut = b;
+  }
+  if (cut < text.length) frag.appendChild(document.createTextNode(text.slice(cut)));
+
+  atom.replaceChildren(frag);
+  if (sig) atom.dataset.marksig = sig;
+  else delete atom.dataset.marksig;
+  return true;
+}
+
+/**
+ * 塊の中に付けた印を外す。
+ *
+ * ハイライトの登録を取り下げるのと同じ役目。書き換えたら true。
+ */
+export function clearAtomMarks(el: HTMLElement): boolean {
+  let touched = false;
+  for (const atom of Array.from(el.querySelectorAll<HTMLElement>("[data-marksig]"))) {
+    atom.textContent = atom.textContent ?? "";
+    delete atom.dataset.marksig;
+    touched = true;
+  }
+  return touched;
 }

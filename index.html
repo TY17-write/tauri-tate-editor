@@ -19,7 +19,7 @@
             <button id="btnSaveAs" type="button" title="Ctrl+Shift+S">名前を付けて</button>
             <button id="btnFind" type="button" title="Ctrl+F">検索</button>
             <button id="btnOutline" type="button" title="Ctrl+G">目次</button>
-            <button id="btnReport" type="button" title="Ctrl+R">文体</button>
+            <button id="btnReport" type="button">文体</button>
           </div>
         </div>
         <div class="ctl">
@@ -194,6 +194,16 @@
             spellcheck="false"
           ></div>
         </main>
+      </div>
+
+      <!-- ルビ入力の小窓。
+           読みは本文（rt）に直に打たせない。rt の中では日本語入力が
+           続かず、変換を始めた時点で入力が外れてしまうため。 -->
+      <div id="rubyBox" class="rubybox" hidden>
+        <span class="rubybox-base" id="rubyBase"></span>
+        <label for="rubyReading">読み</label>
+        <input id="rubyReading" type="text" autocomplete="off" spellcheck="false" />
+        <span class="rubybox-hint">Enter 確定 / Esc 取消　空で外す</span>
       </div>
 
       <footer class="statusbar">

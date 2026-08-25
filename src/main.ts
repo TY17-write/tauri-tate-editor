@@ -7,7 +7,7 @@
  */
 
 import { Session } from "./editor/session";
-import type { EditMode } from "./editor/session";
+import type { CommandResult, EditMode } from "./editor/session";
 import {
   NOTATIONS,
   convertNotation,
@@ -299,12 +299,119 @@ for (const n of NOTATIONS) {
   notationSel.appendChild(o);
 }
 notationSel.value = notation;
-notationSel.title = notationInfo(notation).hint;
+
+/** 記法の書き方と、ルビ・傍点のキーを吹き出しに出す。 */
+function setNotationHint(): void {
+  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点`;
+}
+setNotationHint();
+
+/* ---------- ルビ入力の小窓 ---------- */
+const rubyBox = $<HTMLElement>("rubyBox");
+const rubyReading = $<HTMLInputElement>("rubyReading");
+const rubyBase = $<HTMLElement>("rubyBase");
+
+/**
+ * ルビの小窓を開く。
+ *
+ * 読みを本文（rt）に直に打たせない。rt の中では日本語入力が続かず、
+ * 変換を始めた時点で入力が外れてしまう。ふつうの input なら IME が
+ * そのまま効く。
+ *
+ * `pick` を渡すと、そのルビの読みを直す（読みをクリックしたとき）。
+ */
+function openRubyBox(pick?: HTMLElement): void {
+  if (!rubyBox.hidden) {
+    rubyReading.focus();
+    rubyReading.select();
+    return;
+  }
+  const { target, message } = session.rubyTarget(pick);
+  if (!target) {
+    statusMsg.textContent = message;
+    statusMsg.classList.remove("err");
+    return;
+  }
+
+  rubyBase.textContent = target.base;
+  rubyReading.value = target.reading;
+  rubyBox.hidden = false;
+  placeRubyBox(target.rect);
+  rubyReading.focus();
+  rubyReading.select();
+}
+
+/** 小窓を、指した場所の近くかつ画面の中に収まる位置へ置く。 */
+function placeRubyBox(near: DOMRect | null): void {
+  const box = rubyBox.getBoundingClientRect();
+  const margin = 8;
+  const x = near ? near.left + near.width / 2 - box.width / 2 : window.innerWidth / 2 - box.width / 2;
+  const y = near ? near.bottom + margin : window.innerHeight / 2;
+  rubyBox.style.left = `${Math.min(Math.max(margin, x), window.innerWidth - box.width - margin)}px`;
+  rubyBox.style.top = `${Math.min(Math.max(margin, y), window.innerHeight - box.height - margin)}px`;
+}
+
+/** 小窓を閉じる。振らずに閉じただけなので、覚えた場所も捨てる。 */
+function closeRubyBox(): void {
+  if (rubyBox.hidden) return;
+  rubyBox.hidden = true;
+  session.cancelRuby();
+  paper.focus();
+}
+
+rubyReading.addEventListener("keydown", (e) => {
+  // 変換中の Enter と Esc は IME のもの。横取りすると変換が消える
+  if (e.isComposing) return;
+  if (e.key === "Enter") {
+    // 検索バーなど、外側の Esc/Enter の始末に巻き込まれないようにする
+    e.stopPropagation();
+    e.preventDefault();
+    const reading = rubyReading.value;
+    rubyBox.hidden = true;
+    void runNotationCommand(() => session.applyRuby(reading));
+  } else if (e.key === "Escape") {
+    e.stopPropagation();
+    e.preventDefault();
+    closeRubyBox();
+  }
+});
+rubyReading.addEventListener("blur", () => closeRubyBox());
+
+// 読みをクリックしたら、その場で直せるようにする。
+// 本文の要素は作り直されるので、動かない親で受ける
+viewport.addEventListener("click", (e) => {
+  const el = (e.target as HTMLElement | null)?.closest?.("rt");
+  const ruby = el?.closest("ruby");
+  if (ruby) openRubyBox(ruby as HTMLElement);
+});
+
+/**
+ * ルビと傍点のコマンドを走らせて、結果を知らせる。
+ *
+ * 本文を直したときだけ「未保存」の印と文字数を更新する。
+ * 書き方を知らせただけのときは、原稿は変わっていない。
+ */
+async function runNotationCommand(run: () => Promise<CommandResult>): Promise<void> {
+  try {
+    const res = await run();
+    statusMsg.textContent = res.message;
+    statusMsg.classList.remove("err");
+    if (res.changed) {
+      markDirty();
+      updateStatus();
+    }
+  } catch (err) {
+    statusMsg.textContent = `エラー: ${String(err)}`;
+    statusMsg.classList.add("err");
+  }
+}
 
 /**
  * 記法を変える。本文のルビと傍点も書き換える。
  *
- * 傍点を書けない記法へ移すと傍点が失われるので、先に断りを入れる。
+ * 傍点の書き方がない記法（なろう・pixiv）へ移しても、中黒のルビで
+ * 代用されるので傍点は消えない。読み取りでもその形を傍点として
+ * 受けるため、戻せば元の書き方に戻る。
  */
 async function changeNotation(next: Notation): Promise<void> {
   if (next === notation) return;
@@ -312,23 +419,13 @@ async function changeNotation(next: Notation): Promise<void> {
   const to = notationInfo(next);
 
   try {
-    const counts = await countNotation(notation);
-    if (counts.emphasis > 0 && from.emphasis && !to.emphasis) {
-      const ok = window.confirm(
-        `${to.label}には傍点の書き方がありません。\n` +
-          `本文の傍点 ${counts.emphasis} 箇所は、記号を外して文字だけが残ります。\n\n` +
-          `続けますか。`,
-      );
-      if (!ok) {
-        notationSel.value = notation;
-        return;
-      }
-    }
-
+    // 傍点の書き方がない記法（なろう・pixiv）へ移しても、中黒の
+    // ルビで代用されるので傍点は失われない。断りは要らない。
     const converted = await convertNotation(notation, next);
     notation = next;
     saveNotation(notation);
-    notationSel.title = to.hint;
+    setNotationHint();
+    await session.setNotation(notation);
 
     if (session.editMode === "preview") {
       await session.rebuildPreview(notation);
@@ -359,9 +456,7 @@ async function setMode(mode: EditMode): Promise<void> {
     modePreviewBtn.classList.toggle("is-on", mode === "preview");
     paper.dataset.mode = mode;
     statusMsg.textContent =
-      mode === "preview"
-        ? "プレビュー表示。ここでも書けますが、品詞マーカーは出ません"
-        : "記法表示";
+      mode === "preview" ? "プレビュー表示。ルビもその場で直せます" : "記法表示";
     statusMsg.classList.remove("err");
     updateStatus();
   } catch (err) {
@@ -932,8 +1027,15 @@ window.addEventListener("keydown", (e) => {
       return;
     }
     if (k === "r") {
+      // ルビ。何も選んでいなければ、いまの記法の書き方を知らせる
       e.preventDefault();
-      toggleReport();
+      openRubyBox();
+      return;
+    }
+    if (k === "b") {
+      // 傍点の付け外し。ブラウザの太字が走らないよう先に止める
+      e.preventDefault();
+      void runNotationCommand(() => session.toggleEmphasis());
       return;
     }
     if (k === "e") {
@@ -988,6 +1090,8 @@ if (!MarkerLayer.supported) {
   statusMsg.textContent = "CSS Custom Highlight API が使えないため、マーカーは表示されません";
   statusMsg.classList.add("err");
 }
+// ルビと傍点のコマンドは、プレビューを開いていなくても記法の書き方が要る
+void session.setNotation(notation);
 void session.setText(SAMPLE).then(() => {
   // 本文が入ってからでないとスクロール量を測れない
   scroller.calibrate();

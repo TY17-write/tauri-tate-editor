@@ -490,26 +490,53 @@ button.toggle.is-on {
 }
 
 /* プレビューのルビと傍点。
-   どちらも contenteditable="false" の塊にしてあるので、
-   キャレットが中に入り込んで記法が壊れることがない。 */
+   どちらもその場で打ち直せる。読み戻すときに中身から記法を
+   組み立て直すので、キャレットが中に入っても壊れない。 */
 .paper ruby {
   ruby-position: over;
+  /* 読みを重ねて置くための土台 */
+  position: relative;
 }
+
+/* ルビの読みは流れから外す。
+   そのまま置くと、読みが親文字より長いときに親文字の字送りが
+   広がり、さらに行そのものが太って後ろの列まで動く。実測では
+   行送りが詰まっているほど大きくずれた（20字20行で 12px）。
+   絶対配置にすれば、読みの長さは組版に一切影響しない。
+
+   縦書き（vertical-rl）では block 方向が右→左なので、
+   inset-block-end: 100% で親文字の右脇に出る。 */
 .paper ruby rt {
   font-size: 0.5em;
-  /* ルビのぶんだけ行が太らないよう、行送りの中に収める */
   line-height: 1;
+  position: absolute;
+  inset-block-end: 100%;
+  inset-inline-start: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  /* 読みが長くても隣の行の文字を隠さない */
+  pointer-events: auto;
 }
 .paper .bouten {
   text-emphasis: filled sesame;
   text-emphasis-position: over right;
   -webkit-text-emphasis: filled sesame;
 }
+/* 見出し記号（行頭の ＃ の並び）。
+   プレビューでは見えなくするが、要素は消さずに置いたままにする。
+   消すとマス目の位置が記法表示とずれるので、空白として残す。 */
+.paper .heading-mark {
+  visibility: hidden;
+}
+
 /* 塊であることが分かるよう、選んだときだけ薄く敷く */
 .paper ruby::selection,
 .paper .bouten::selection {
   background: rgba(90, 140, 220, 0.3);
 }
+
+/* 読みは 0.5em のまま。ここを大きくすると隣の行に掛かる。
+   絶対配置にしてあるので、マス目には影響しない。 */
 
 /* 見出し行。
    文字サイズを変えるとマス目から外れてしまうので、色だけで示す。
@@ -618,6 +645,59 @@ button.toggle.is-on {
 ::highlight(adnominal-c) { color: #6a3ba8; }
 
 /* ------------------------------------------------------------
+   傍点の中の品詞マーカー
+
+   ゴマ点は文字の枠の外（縦書きなら右脇）に描かれる。そこへ
+   ハイライトを重ねると点が潰れて読めなくなる（実測）。かといって
+   塊まるごとを色付けすると、解析した語と対応しなくなる。
+   傍点の中だけは span で語を囲み、要素の色で示す。要素の背景は
+   文字の枠の中しか塗らないので、点には掛からない。
+
+   見え方は上の ::highlight(*) に揃えてある。色を変えるときは
+   両方を直すこと。
+   ------------------------------------------------------------ */
+.paper .bmark-adverb {
+  --mk-h: rgba(255, 122, 90, 0.3);
+  --mk-h2: rgba(255, 214, 64, 0.72);
+  --mk-hu: rgba(255, 122, 90, 0.26);
+  --mk-line: #c0392b;
+  --mk-text: #b8341f;
+}
+.paper .bmark-adjective {
+  --mk-h: rgba(90, 165, 255, 0.3);
+  --mk-h2: rgba(140, 230, 255, 0.72);
+  --mk-hu: rgba(90, 165, 255, 0.26);
+  --mk-line: #1e6fb8;
+  --mk-text: #1558a8;
+}
+.paper .bmark-adjectivalnoun {
+  --mk-h: rgba(70, 215, 165, 0.3);
+  --mk-h2: rgba(190, 255, 150, 0.72);
+  --mk-hu: rgba(70, 215, 165, 0.26);
+  --mk-line: #128f6a;
+  --mk-text: #0d7a58;
+}
+.paper .bmark-adnominal {
+  --mk-h: rgba(180, 130, 240, 0.3);
+  --mk-h2: rgba(228, 190, 255, 0.72);
+  --mk-hu: rgba(180, 130, 240, 0.26);
+  --mk-line: #8a5cc4;
+  --mk-text: #6a3ba8;
+}
+
+.paper[data-mark-style="u"] .bmark { text-decoration: underline 2px var(--mk-line); }
+.paper[data-mark-style="d"] .bmark { text-decoration: underline 2px dashed var(--mk-line); }
+.paper[data-mark-style="h"] .bmark { background-color: var(--mk-h); }
+.paper[data-mark-style="h2"] .bmark { background-color: var(--mk-h2); }
+.paper[data-mark-style="hu"] .bmark {
+  background-color: var(--mk-hu);
+  text-decoration: underline 2px var(--mk-line);
+}
+.paper[data-mark-style="c"] .bmark { color: var(--mk-text); }
+/* 傍線（右）はゴマ点と同じ側に出て重なるので、傍点の中だけは地色で示す */
+.paper[data-mark-style="sr"] .bmark { background-color: var(--mk-h); }
+
+/* ------------------------------------------------------------
    傍線（右）─ span を挿して border を引く方式
 
    Highlight API では傍線が必ず文字の左側に出るため、日本語の
@@ -638,6 +718,41 @@ button.toggle.is-on {
 .sidemark-adjective { border-right-color: #1e6fb8; }
 .sidemark-adjectivalnoun { border-right-color: #128f6a; }
 .sidemark-adnominal { border-right-color: #8a5cc4; }
+
+/* ---------- ルビ入力の小窓 ---------- */
+.rubybox {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  color: var(--ui-sub);
+}
+.rubybox[hidden] {
+  display: none;
+}
+.rubybox-base {
+  font-weight: 600;
+  color: var(--ui-fg, #222);
+  max-inline-size: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rubybox input {
+  inline-size: 12em;
+  font-size: 13px;
+  padding: 3px 6px;
+}
+.rubybox-hint {
+  font-size: 11px;
+}
 
 /* ---------- ステータスバー ---------- */
 .statusbar {

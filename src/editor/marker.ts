@@ -16,9 +16,14 @@
  * マーカーは段落 ID に紐づけて持ち、DOM 要素は描画のたびに
  * `data-slot` / `data-gen` から引き直す。要素の参照を持ち回ると、
  * 編集で段落要素が作り直されたときに古い要素へ Range を張ってしまう。
+ *
+ * Rust が返すオフセットは記法テキスト（`|漢字《かんじ》` を含む
+ * 生の本文）の上での位置なので、DOM に写す前に segment.ts で
+ * 区間の並びに直す。プレビューでも同じ経路で描けるのはこのため。
  */
 
-import { clearSideMarks, paintSideMarks } from "./sidemark";
+import { markHits, readSegments, srcLength } from "./segment";
+import { clearAtomMarks, clearSideMarks, paintAtomMarks, paintSideMarks } from "./sidemark";
 import { ALL_POS, idKey, usesDomWrite } from "./types";
 import type { Mark, MarkStyle, ParaId, PosTag } from "./types";
 
@@ -39,6 +44,13 @@ export class MarkerLayer {
   };
   /** 直近に描画したマーカー数。ステータス表示用 */
   lastCount = 0;
+  /**
+   * 直近の描画で DOM を書き換えたか。
+   *
+   * 傍点の中の印と傍線（右）は span を挿すのでキャレットが飛ぶ。
+   * 呼び出し側はこれを見て、キャレットを戻すかどうかを決める。
+   */
+  touchedDom = false;
   /**
    * いま CSS.highlights に登録している名前。
    *
@@ -115,37 +127,47 @@ export class MarkerLayer {
   /** 保持しているマーカーを描き直す。 */
   render(): void {
     this.lastCount = 0;
+    this.touchedDom = false;
     const pairs = this.pairs();
+    // 傍点の中の印は CSS クラスで描くので、表示スタイルを紙に持たせる
+    this.paper.dataset.markStyle = this.opts.style;
+
+    if (!this.opts.enabled) {
+      this.clearOwn();
+      for (const { el } of pairs) {
+        clearSideMarks(el);
+        if (clearAtomMarks(el)) this.touchedDom = true;
+      }
+      return;
+    }
 
     // 傍線（右）だけは Highlight API では描けないので span を挿す
     if (this.usesDom) {
       this.clearOwn();
       for (const { el, marks } of pairs) {
-        if (!this.opts.enabled) {
-          clearSideMarks(el);
-          continue;
-        }
-        paintSideMarks(el, marks, this.opts.visible);
-        this.lastCount += marks.filter((m) => this.opts.visible.has(m.pos)).length;
+        this.lastCount += paintSideMarks(el, marks, this.opts.visible);
       }
+      this.touchedDom = true;
       return;
     }
 
-    // 直前まで span 方式だったなら、テキストノード1つの状態に戻す。
+    // 直前まで span 方式だったなら、元の並びに戻す。
     // 戻す前に Range を張ると相手のノードが見つからない。
     for (const { el } of pairs) clearSideMarks(el);
 
     if (!MarkerLayer.supported) return;
     this.clearOwn();
-    if (!this.opts.enabled) return;
 
     const buckets = new Map<PosTag, Range[]>();
     for (const pos of ALL_POS) buckets.set(pos, []);
 
     for (const { el, marks } of pairs) {
-      const node = el.firstChild;
-      if (!node || node.nodeType !== Node.TEXT_NODE) continue;
-      const len = (node as Text).length;
+      // 記法表示ならテキストノード1つ、プレビューならテキストと
+      // ルビ・傍点の塊の並び。どちらも同じ区間の並びに直してから
+      // Range を張る
+      const segs = readSegments(el);
+      const len = srcLength(segs);
+      const parts = new Map<HTMLElement, { start: number; end: number; pos: PosTag }[]>();
 
       for (const m of marks) {
         if (!this.opts.visible.has(m.pos)) continue;
@@ -153,10 +175,21 @@ export class MarkerLayer {
         // 丸めずに捨てる。丸めると別の語に線が付いて見える。
         if (m.start >= m.end || m.end > len) continue;
 
-        const r = document.createRange();
-        r.setStart(node, m.start);
-        r.setEnd(node, m.end);
-        buckets.get(m.pos)!.push(r);
+        const hit = markHits(segs, m);
+        if (hit.ranges.length === 0 && hit.atoms.length === 0) continue;
+        for (const r of hit.ranges) buckets.get(m.pos)!.push(r);
+        // 傍点の中はハイライトで塗れないので、語ごとに span で示す
+        for (const a of hit.atoms) {
+          const list = parts.get(a.atom) ?? [];
+          list.push({ start: a.start, end: a.end, pos: m.pos });
+          parts.set(a.atom, list);
+        }
+        this.lastCount += 1;
+      }
+
+      // 段落の中の傍点はすべて塗り直す。掛からなくなったものは空になる
+      for (const atom of Array.from(el.querySelectorAll<HTMLElement>(".bouten"))) {
+        if (paintAtomMarks(atom, parts.get(atom) ?? [])) this.touchedDom = true;
       }
     }
 
@@ -165,7 +198,6 @@ export class MarkerLayer {
       const name = `${pos}-${this.opts.style}`;
       CSS.highlights.set(name, new Highlight(...ranges));
       this.registered.push(name);
-      this.lastCount += ranges.length;
     }
   }
 }
