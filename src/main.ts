@@ -1,22 +1,204 @@
-import { invoke } from "@tauri-apps/api/core";
+/**
+ * 縦書き小説エディタ tauri-tate-editor
+ *
+ * 画面の組み立てとイベント配線。
+ * 組版まわりの知見は editor/grid.ts、
+ * マーカーの制約は editor/marker.ts のコメントを参照。
+ */
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
+import { Session } from "./editor/session";
+import { MarkerLayer } from "./editor/marker";
+import { VerticalScroller } from "./editor/scroll";
+import {
+  DEFAULT_LAYOUT,
+  FONTS,
+  PRESETS,
+  applyLayout,
+  charsPerPage,
+  countNormalizable,
+  isGridSafeFont,
+  normalizeText,
+} from "./editor/grid";
+import type { Layout, MarkStyle, PosTag } from "./editor/types";
 
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
-  }
+const SAMPLE = [
+  "　夜半の風が硝子戸を鳴らしていた。まだ午前二時、原稿はわずか十二枚しか進んでいない。",
+  "　わたしはふと顔を上げた。しばらくのあいだ、その音に耳を澄ませていた。とても静かな夜だった。ずいぶん長く、同じ行を書いては消していたように思う。",
+  "　「まだ起きていたのか」",
+  "　背後で声がした。振り返ると、兄が立っている。ずいぶん久しぶりに見る顔だった……ように思えたが、実際には昨日も会っている。",
+  "　「ええ。少しだけ」",
+  "　わたしはそう答えて、机の上の原稿用紙を裏返した。まだ誰にも見せたくなかった。",
+  "　兄はゆっくりと近づいてきて、窓の外を眺めた。暗い庭に、白いものがちらついている。",
+  "　「雪だな」",
+  "　「そうですね」",
+  "　やがて雪は激しくなり、庭木の輪郭を静かに消していった。とても長い夜だ――と、わたしは思った。",
+  "　わたしは決してあきらめないと決めていた。けれど、その決意はひどく脆く、かすかな物音にさえ揺らいでしまう。",
+  "　窓辺の空気は冷たく、指先の感覚が鈍くなっていく。それでもわたしは、ゆっくりと万年筆を握り直した。",
+].join("\n");
+
+function $<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`要素が見つかりません: #${id}`);
+  return el as T;
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
+const paper = $<HTMLElement>("paper");
+const viewport = $<HTMLElement>("viewport");
+const statusCount = $<HTMLElement>("status-count");
+const statusPage = $<HTMLElement>("status-page");
+const statusMark = $<HTMLElement>("status-mark");
+const statusMsg = $<HTMLElement>("status-msg");
+
+const layout: Layout = { ...DEFAULT_LAYOUT };
+
+/* ---------- 書体の選択肢 ---------- */
+const fontSel = $<HTMLSelectElement>("font");
+for (const f of FONTS) {
+  const o = document.createElement("option");
+  o.value = f.value;
+  o.textContent = f.label;
+  fontSel.appendChild(o);
+}
+fontSel.value = layout.font;
+
+/* ---------- セッション ---------- */
+const session = new Session(paper, {
+  onStatus: (msg, isError) => {
+    statusMsg.textContent = msg;
+    statusMsg.classList.toggle("err", Boolean(isError));
+  },
+  onSynced: () => updateStatus(),
+});
+
+const scroller = new VerticalScroller(viewport, () => layout.lines * layout.step);
+
+/* ---------- ステータス ---------- */
+function updateStatus(): void {
+  const text = session.text();
+  const chars = text.replace(/\n/g, "").length;
+  const perPage = charsPerPage(layout);
+  statusCount.textContent = `${chars.toLocaleString()} 字　${(chars / 400).toFixed(1)} 枚`;
+  statusPage.textContent = `${perPage} 字/ページ　全 ${Math.max(1, Math.ceil(chars / perPage))} ページ`;
+  statusMark.textContent = MarkerLayer.supported
+    ? `マーカー ${session.marker.lastCount}`
+    : "マーカー非対応";
+
+  const n = countNormalizable(text);
+  const btn = $<HTMLButtonElement>("btnNormalize");
+  btn.textContent = n ? `正規化 (${n})` : "正規化";
+  btn.disabled = n === 0;
+}
+
+/* ---------- 組版設定 ---------- */
+function refreshLayout(): void {
+  applyLayout(layout);
+  if (!isGridSafeFont(layout.font) && paper.className.includes("grid-full")) {
+    session.marker.render();
+    statusMsg.textContent = "この書体は約物が詰まるため、升目とは揃いません";
+    statusMsg.classList.add("err");
+  }
+  updateStatus();
+}
+
+const presetSel = $<HTMLSelectElement>("preset");
+const charsInput = $<HTMLInputElement>("chars");
+const linesInput = $<HTMLInputElement>("lines");
+
+presetSel.addEventListener("change", () => {
+  const p = PRESETS[presetSel.value];
+  if (!p) return;
+  layout.chars = p.chars;
+  layout.lines = p.lines;
+  charsInput.value = String(p.chars);
+  linesInput.value = String(p.lines);
+  refreshLayout();
+});
+
+charsInput.addEventListener("input", () => {
+  layout.chars = Number(charsInput.value) || layout.chars;
+  presetSel.value = "custom";
+  refreshLayout();
+});
+linesInput.addEventListener("input", () => {
+  layout.lines = Number(linesInput.value) || layout.lines;
+  presetSel.value = "custom";
+  refreshLayout();
+});
+$<HTMLInputElement>("cell").addEventListener("input", (e) => {
+  layout.cell = Number((e.target as HTMLInputElement).value);
+  refreshLayout();
+});
+$<HTMLInputElement>("step").addEventListener("input", (e) => {
+  layout.step = Number((e.target as HTMLInputElement).value);
+  refreshLayout();
+});
+fontSel.addEventListener("change", () => {
+  layout.font = fontSel.value;
+  refreshLayout();
+});
+
+$<HTMLSelectElement>("gridMode").addEventListener("change", (e) => {
+  const v = (e.target as HTMLSelectElement).value;
+  paper.classList.remove("grid-full", "grid-rules", "grid-page");
+  if (v) paper.classList.add(v);
+});
+
+/* ---------- マーカー ---------- */
+$<HTMLSelectElement>("markStyle").addEventListener("change", (e) => {
+  session.marker.setOptions({ style: (e.target as HTMLSelectElement).value as MarkStyle });
+  updateStatus();
+});
+
+for (const cb of Array.from(
+  document.querySelectorAll<HTMLInputElement>(".pos-toggles input[data-pos]"),
+)) {
+  cb.addEventListener("change", () => {
+    const visible = new Set<PosTag>();
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLInputElement>(".pos-toggles input[data-pos]"),
+    )) {
+      if (el.checked) visible.add(el.dataset.pos as PosTag);
+    }
+    session.marker.setOptions({ visible });
+    updateStatus();
   });
+}
+
+const btnMarker = $<HTMLButtonElement>("btnMarker");
+btnMarker.addEventListener("click", () => {
+  const on = !session.marker.options.enabled;
+  session.marker.setOptions({ enabled: on });
+  btnMarker.classList.toggle("is-on", on);
+  updateStatus();
+});
+
+/* ---------- 正規化 ---------- */
+$<HTMLButtonElement>("btnNormalize").addEventListener("click", () => {
+  void session.setText(normalizeText(session.text()));
+});
+
+/* ---------- ページ送り ---------- */
+window.addEventListener("keydown", (e) => {
+  if (e.target === paper) return;
+  if (e.key === "PageDown") {
+    scroller.movePage(1);
+    e.preventDefault();
+  } else if (e.key === "PageUp") {
+    scroller.movePage(-1);
+    e.preventDefault();
+  } else if (e.key === "Home" && e.ctrlKey) {
+    scroller.toHead();
+    e.preventDefault();
+  }
+});
+
+/* ---------- 起動 ---------- */
+applyLayout(layout);
+if (!MarkerLayer.supported) {
+  statusMsg.textContent = "CSS Custom Highlight API が使えないため、マーカーは表示されません";
+  statusMsg.classList.add("err");
+}
+void session.setText(SAMPLE).then(() => {
+  scroller.toHead();
+  paper.focus();
 });

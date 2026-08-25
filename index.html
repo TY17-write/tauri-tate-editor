@@ -1,43 +1,100 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
+    <title>縦書きエディタ</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
   <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
+    <div class="app">
+      <header class="toolbar">
+        <div class="ctl">
+          <label for="preset">判型</label>
+          <select id="preset">
+            <option value="20,20">原稿用紙　20字 × 20行</option>
+            <option value="20,10">原稿用紙ペラ　20字 × 10行</option>
+            <option value="42,16">文庫　42字 × 16行</option>
+            <option value="43,17">新書　43字 × 17行</option>
+            <option value="44,18">四六判　44字 × 18行</option>
+            <option value="custom">カスタム</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <label for="chars">字数</label>
+          <input type="number" id="chars" min="5" max="80" value="20" />
+        </div>
+        <div class="ctl">
+          <label for="lines">行数</label>
+          <input type="number" id="lines" min="3" max="40" value="20" />
+        </div>
+        <div class="ctl">
+          <label for="cell">文字サイズ</label>
+          <input type="range" id="cell" min="12" max="40" value="24" />
+        </div>
+        <div class="ctl">
+          <label for="step">行送り</label>
+          <input type="range" id="step" min="16" max="70" value="38" />
+        </div>
+        <div class="ctl">
+          <label for="font">書体</label>
+          <select id="font"></select>
+        </div>
+        <div class="ctl">
+          <label for="gridMode">マス目</label>
+          <select id="gridMode">
+            <option value="grid-full">升目</option>
+            <option value="grid-rules">行罫のみ</option>
+            <option value="grid-page">ページ区切りのみ</option>
+            <option value="">なし</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <label for="markStyle">マーカー</label>
+          <select id="markStyle">
+            <option value="h">蛍光ペン（淡い）</option>
+            <option value="h2">蛍光ペン（濃い）</option>
+            <option value="u">傍線</option>
+            <option value="d">傍線（破線）</option>
+            <option value="hu">蛍光ペン＋傍線</option>
+            <option value="c">文字色</option>
+          </select>
+        </div>
+        <div class="ctl pos-toggles">
+          <label>対象品詞</label>
+          <div class="checks">
+            <label><input type="checkbox" data-pos="adverb" checked /> 副詞</label>
+            <label><input type="checkbox" data-pos="adjective" checked /> 形容詞</label>
+            <label><input type="checkbox" data-pos="adjectivalnoun" checked /> 形容動詞</label>
+            <label><input type="checkbox" data-pos="adnominal" /> 連体詞</label>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>&nbsp;</label>
+          <div class="row">
+            <button id="btnMarker" class="toggle is-on" type="button">マーカー表示</button>
+            <button id="btnNormalize" type="button" title="ダーシ U+2014 と半角英数を全角に寄せます">正規化</button>
+          </div>
+        </div>
+      </header>
 
-      <div class="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/src/assets/vite.svg" class="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img
-            src="/src/assets/tauri.svg"
-            class="logo tauri"
-            alt="Tauri logo"
-          />
-        </a>
-        <a href="https://www.typescriptlang.org/docs" target="_blank">
-          <img
-            src="/src/assets/typescript.svg"
-            class="logo typescript"
-            alt="typescript logo"
-          />
-        </a>
-      </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
+      <main class="viewport" id="viewport">
+        <div
+          class="paper grid-full"
+          id="paper"
+          contenteditable="plaintext-only"
+          spellcheck="false"
+        ></div>
+      </main>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
-    </main>
+      <footer class="statusbar">
+        <span id="status-count">—</span>
+        <span id="status-page">—</span>
+        <span id="status-mark">—</span>
+        <span id="status-msg" class="grow"></span>
+      </footer>
+    </div>
   </body>
 </html>

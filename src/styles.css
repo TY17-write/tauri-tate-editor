@@ -1,116 +1,266 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+/* ============================================================
+   縦書き小説エディタ
 
-.logo.typescript:hover {
-  filter: drop-shadow(0 0 2em #2d79c7);
-}
+   組版まわりの数値は CSS 変数で持ち、TypeScript から書き換える。
+     --cell  1文字の送り（= font-size）。マス目の一辺
+     --step  1行の送り（行の太さ）
+     --chars 1行の字数
+     --lines 1ページの行数
+   ============================================================ */
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+  --cell: 24px;
+  --step: 38px;
+  --chars: 20;
+  --lines: 20;
+  --novel-font: "MS 明朝", "MS Mincho", serif;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  --paper: #fdfbf4;
+  --paper-edge: #ddd8c8;
+  --desk: #e8e6de;
+  --rule: rgba(150, 130, 100, 0.3);
+  --pagerule: rgba(190, 80, 60, 0.5);
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  --ui-bg: #f4f4f6;
+  --ui-panel: #fff;
+  --ui-border: #d5d5dc;
+  --ui-text: #22222a;
+  --ui-sub: #6b6b78;
+  --ui-accent: #3a5a8c;
 }
 
-.container {
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
   margin: 0;
-  padding-top: 10vh;
+}
+
+body {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow: hidden;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+/* ---------- ツールバー ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: flex-start;
+  padding: 8px 14px;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-border);
+}
+.ctl {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  gap: 2px;
 }
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
+.ctl > label:first-child {
+  font-size: 11px;
+  color: var(--ui-sub);
 }
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
+.ctl select,
+.ctl input[type="number"] {
+  font-size: 12px;
+  padding: 2px 4px;
 }
-
+.ctl input[type="number"] {
+  width: 64px;
+}
+.ctl input[type="range"] {
+  width: 110px;
+}
 .row {
   display: flex;
-  justify-content: center;
+  gap: 6px;
 }
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.checks {
+  display: flex;
+  gap: 10px;
 }
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
+.checks label {
+  font-size: 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
   cursor: pointer;
 }
 
-button:hover {
-  border-color: #396cd8;
+button {
+  font-size: 12px;
+  padding: 3px 11px;
+  cursor: pointer;
+  border: 1px solid var(--ui-border);
+  background: #fff;
+  border-radius: 4px;
+  color: inherit;
+  font-family: inherit;
 }
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+button:hover {
+  background: #f0f2f6;
+}
+button.toggle.is-on {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #fff;
 }
 
-input,
-button {
+/* ---------- 用紙 ---------- */
+.viewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--desk);
+  padding: 20px;
+  min-height: 0;
+}
+
+/* 縦書きでは論理軸が入れ替わる。
+   inline 軸 = 上下（1行の字数を決めるのはこちら）
+   block  軸 = 右→左（行が並ぶ方向） */
+.paper {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  inline-size: calc(var(--chars) * var(--cell));
+  min-block-size: calc(var(--lines) * var(--step));
+  background-color: var(--paper);
+  background-repeat: repeat;
+  background-position: right top;
+  border: 1px solid var(--paper-edge);
+
+  font-family: var(--novel-font);
+  font-size: var(--cell);
+  line-height: var(--step);
+  letter-spacing: 0;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  /* 約物が詰まるとマス目から外れるので明示的に止める */
+  font-feature-settings: "palt" 0, "vpal" 0;
+  line-break: strict;
   outline: none;
 }
 
-#greet-input {
-  margin-right: 5px;
+/* 字下げは本文中の全角空白で行う。
+   U+3000 は CSS の空白折り畳みの対象外なので 1 マスとして残る */
+.paper p {
+  margin: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
+/* マス目。先に書いたレイヤーが上に来る */
+.grid-full {
+  background-image:
+    repeating-linear-gradient(
+      to left,
+      var(--pagerule) 0 2px,
+      transparent 2px calc(var(--step) * var(--lines))
+    ),
+    repeating-linear-gradient(to left, var(--rule) 0 1px, transparent 1px var(--step)),
+    repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px var(--cell));
+}
+.grid-rules {
+  background-image:
+    repeating-linear-gradient(
+      to left,
+      var(--pagerule) 0 2px,
+      transparent 2px calc(var(--step) * var(--lines))
+    ),
+    repeating-linear-gradient(to left, var(--rule) 0 1px, transparent 1px var(--step));
+}
+.grid-page {
+  background-image: repeating-linear-gradient(
+    to left,
+    var(--pagerule) 0 2px,
+    transparent 2px calc(var(--step) * var(--lines))
+  );
+}
 
-  a:hover {
-    color: #24c8db;
-  }
+/* ============================================================
+   品詞マーカー（CSS Custom Highlight API）
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+   Chromium の実測で分かった制約:
+     ・text-decoration は「::highlight(名前)」の単体セレクタでしか効かない。
+       「.cls ::highlight(名前)」と書くと無視される（background-color は効く）
+     ・text-underline-position は効かず、傍線は必ず文字の左側に出る
+     ・overline と text-emphasis は描画されない
+   よって表示スタイルは CSS クラスではなくハイライト名で切り替える。
+   名前は「{品詞}-{スタイル}」。
+   ============================================================ */
+
+/* 傍線（実線） */
+::highlight(adverb-u) { text-decoration: underline 2px #c0392b; }
+::highlight(adjective-u) { text-decoration: underline 2px #1e6fb8; }
+::highlight(adjectivalnoun-u) { text-decoration: underline 2px #128f6a; }
+::highlight(adnominal-u) { text-decoration: underline 2px #8a5cc4; }
+
+/* 傍線（破線） */
+::highlight(adverb-d) { text-decoration: underline 2px dashed #c0392b; }
+::highlight(adjective-d) { text-decoration: underline 2px dashed #1e6fb8; }
+::highlight(adjectivalnoun-d) { text-decoration: underline 2px dashed #128f6a; }
+::highlight(adnominal-d) { text-decoration: underline 2px dashed #8a5cc4; }
+
+/* 蛍光ペン（淡い） */
+::highlight(adverb-h) { background-color: rgba(255, 122, 90, 0.3); }
+::highlight(adjective-h) { background-color: rgba(90, 165, 255, 0.3); }
+::highlight(adjectivalnoun-h) { background-color: rgba(70, 215, 165, 0.3); }
+::highlight(adnominal-h) { background-color: rgba(180, 130, 240, 0.3); }
+
+/* 蛍光ペン（濃い） */
+::highlight(adverb-h2) { background-color: rgba(255, 214, 64, 0.72); }
+::highlight(adjective-h2) { background-color: rgba(140, 230, 255, 0.72); }
+::highlight(adjectivalnoun-h2) { background-color: rgba(190, 255, 150, 0.72); }
+::highlight(adnominal-h2) { background-color: rgba(228, 190, 255, 0.72); }
+
+/* 蛍光ペン＋傍線 */
+::highlight(adverb-hu) {
+  background-color: rgba(255, 122, 90, 0.26);
+  text-decoration: underline 2px #c0392b;
+}
+::highlight(adjective-hu) {
+  background-color: rgba(90, 165, 255, 0.26);
+  text-decoration: underline 2px #1e6fb8;
+}
+::highlight(adjectivalnoun-hu) {
+  background-color: rgba(70, 215, 165, 0.26);
+  text-decoration: underline 2px #128f6a;
+}
+::highlight(adnominal-hu) {
+  background-color: rgba(180, 130, 240, 0.26);
+  text-decoration: underline 2px #8a5cc4;
+}
+
+/* 文字色のみ */
+::highlight(adverb-c) { color: #b8341f; }
+::highlight(adjective-c) { color: #1558a8; }
+::highlight(adjectivalnoun-c) { color: #0d7a58; }
+::highlight(adnominal-c) { color: #6a3ba8; }
+
+/* ---------- ステータスバー ---------- */
+.statusbar {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  padding: 4px 14px;
+  background: var(--ui-panel);
+  border-top: 1px solid var(--ui-border);
+  font-size: 12px;
+  color: var(--ui-sub);
+  font-variant-numeric: tabular-nums;
+}
+.statusbar .grow {
+  margin-left: auto;
+}
+.statusbar .err {
+  color: #9c2222;
 }
