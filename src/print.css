@@ -1,0 +1,143 @@
+/* ============================================================
+   印刷（PDF 出力もこれを通る）
+
+   画面用の styles.css とは別のファイルにして media="print" で
+   読ませている。切り分けやすくするためで、確かめたいときは
+   link の media を all にすれば画面でそのまま見られる。
+
+   すべての宣言に !important を付けてある。読み込みの順に頼れない
+   ためで、理由は二つ:
+     ・組版の値（--cell / --step）は grid.ts が :root のインライン
+       スタイルで入れる。ふつうの規則では勝てない
+     ・vite build が束ねた CSS の link は、index.html に書いた link
+       より後ろに置かれる。このファイルは先に読まれるので、同じ
+       重みの規則では styles.css に負ける
+   このファイルは「最後にかぶせる層」だと考える。
+
+   組版の考え方:
+     ・用紙は A4 横。縦書きの行が縦に流れ、ページは右から左へ進む
+     ・1行の字数は画面の設定（--chars）をそのまま使い、文字の大きさ
+       だけを用紙に合わせて決め直す。画面の px をそのまま印刷すると
+       96dpi 換算になり、判型と関係のない大きさになってしまう
+     ・行送りは画面での比（--step-ratio）を保つ。字送りだけ用紙に
+       合わせて行送りを別に決めると、詰まり具合が画面と変わる
+   ============================================================ */
+
+@page {
+  size: A4 landscape;
+  margin: 15mm;
+}
+
+/* 画面のための操作部はすべて落とす */
+.toolbar,
+.findbar,
+.statusbar,
+.outline,
+.report,
+.rubybox {
+  display: none !important;
+}
+
+:root {
+  /* A4 横。縦書きでは「行の長さ」に当たるのが用紙の高さ */
+  --print-page-inline: 210mm !important;
+  --print-margin: 15mm !important;
+
+  /* 1行の字数から文字の大きさを決める。判型がそのまま用紙に載る */
+  --cell: calc((var(--print-page-inline) - var(--print-margin) * 2) / var(--chars)) !important;
+  /* 行送りは画面での比を保つ。--step-ratio は grid.ts が入れる */
+  --step: calc(var(--cell) * var(--step-ratio, 1.6)) !important;
+
+  /* 配色によらず白い紙に黒い字で刷る。
+     夜の配色のまま刷ると真っ黒な紙になってしまう */
+  --paper: #fff !important;
+  --paper-edge: transparent !important;
+  --desk: #fff !important;
+  --ink: #000 !important;
+  --rule: rgba(0, 0, 0, 0.22) !important;
+  --pagerule: rgba(0, 0, 0, 0.45) !important;
+  --heading: inherit !important;
+  --heading1: inherit !important;
+
+  /* 品詞マーカーは書くための道具なので刷らない。
+     色を変数にしてあるので、ここを透明にするだけで
+     ハイライトも傍点の中の印も消える */
+  --adverb-h: transparent !important;
+  --adverb-h2: transparent !important;
+  --adverb-hu: transparent !important;
+  --adverb-line: transparent !important;
+  --adverb-text: inherit !important;
+
+  --adjective-h: transparent !important;
+  --adjective-h2: transparent !important;
+  --adjective-hu: transparent !important;
+  --adjective-line: transparent !important;
+  --adjective-text: inherit !important;
+
+  --adjectivalnoun-h: transparent !important;
+  --adjectivalnoun-h2: transparent !important;
+  --adjectivalnoun-hu: transparent !important;
+  --adjectivalnoun-line: transparent !important;
+  --adjectivalnoun-text: inherit !important;
+
+  --adnominal-h: transparent !important;
+  --adnominal-h2: transparent !important;
+  --adnominal-hu: transparent !important;
+  --adnominal-line: transparent !important;
+  --adnominal-text: inherit !important;
+
+  --find-hit: transparent !important;
+  --find-current: transparent !important;
+  --issue-hit: transparent !important;
+}
+
+/* 傍線（右）は span の border なので、変数ではなくここで消す */
+.sidemark {
+  border-right-color: transparent !important;
+}
+
+/* ページそのものを縦書きにする。
+   本文だけが縦書きのままだと、用紙は横書きのページとして送られ、
+   横に長い本文が右端で切れてしまう。 */
+html,
+body {
+  writing-mode: vertical-rl !important;
+  block-size: auto !important;
+  inline-size: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  background: #fff !important;
+}
+
+.app {
+  display: block !important;
+  height: auto !important;
+}
+
+.workspace,
+.viewport {
+  display: block !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+
+.paper {
+  border: 0 !important;
+  margin: 0 !important;
+  background-color: #fff !important;
+  /* 用紙いっぱいに使う。画面用の最小の大きさは邪魔になる */
+  min-block-size: 0 !important;
+  block-size: auto !important;
+  inline-size: calc(var(--chars) * var(--cell)) !important;
+  /* マス目や升目を刷るには背景の印刷を明示しないといけない */
+  print-color-adjust: exact !important;
+  -webkit-print-color-adjust: exact !important;
+}
+
+/* 段落の途中でページが変わってもかまわないが、
+   1行だけ残る・送られるのは避ける */
+.paper p {
+  orphans: 2;
+  widows: 2;
+}

@@ -14,18 +14,138 @@
   --lines: 20;
   --novel-font: "MS 明朝", "MS Mincho", serif;
 
+  /* ------------------------------------------------------------
+     配色。ここに並んだ変数だけを差し替えれば、下の規則は触らずに
+     見た目が変わる。配色は :root[data-theme] で切り替える
+     （settings.ts の applyTheme）。
+
+     品詞マーカーの色も変数にしてある。`.cls ::highlight(名前)` の
+     形は効かないので配色ごとに規則を書き分けられないが、
+     `::highlight()` の中の var() は :root の値を拾う（実測）。
+     ------------------------------------------------------------ */
+
+  /* 用紙 */
   --paper: #fdfbf4;
   --paper-edge: #ddd8c8;
   --desk: #e8e6de;
   --rule: rgba(150, 130, 100, 0.3);
   --pagerule: rgba(190, 80, 60, 0.5);
+  --ink: inherit;
+  --heading: #1a3a6b;
+  --heading1: #8a2a1a;
+  --paper-select: rgba(90, 140, 220, 0.3);
 
+  /* 画面まわり */
   --ui-bg: #f4f4f6;
   --ui-panel: #fff;
   --ui-border: #d5d5dc;
   --ui-text: #22222a;
   --ui-sub: #6b6b78;
   --ui-accent: #3a5a8c;
+  --ui-on-accent: #fff;
+  --ui-btn: #fff;
+  --ui-btn-hover: #f0f2f6;
+  --ui-hover: #eef1f6;
+  --ui-current: #e2e9f5;
+  --ui-line: #f0f0f4;
+  --ui-err: #c0392b;
+  --ui-err-bg: #fdf1f0;
+  --ui-err-text: #9c2222;
+  --ui-shadow: rgba(0, 0, 0, 0.18);
+
+  /* 検索と指摘の強調 */
+  --find-hit: rgba(255, 215, 0, 0.45);
+  --find-current: rgba(255, 140, 0, 0.75);
+  --issue-hit: rgba(255, 90, 90, 0.35);
+  --issue-row: #fdeceb;
+
+  /* 品詞マーカー。h=淡い蛍光 h2=濃い蛍光 hu=蛍光＋傍線 line=傍線 text=文字色 */
+  --adverb-h: rgba(255, 122, 90, 0.3);
+  --adverb-h2: rgba(255, 214, 64, 0.72);
+  --adverb-hu: rgba(255, 122, 90, 0.26);
+  --adverb-line: #c0392b;
+  --adverb-text: #b8341f;
+
+  --adjective-h: rgba(90, 165, 255, 0.3);
+  --adjective-h2: rgba(140, 230, 255, 0.72);
+  --adjective-hu: rgba(90, 165, 255, 0.26);
+  --adjective-line: #1e6fb8;
+  --adjective-text: #1558a8;
+
+  --adjectivalnoun-h: rgba(70, 215, 165, 0.3);
+  --adjectivalnoun-h2: rgba(190, 255, 150, 0.72);
+  --adjectivalnoun-hu: rgba(70, 215, 165, 0.26);
+  --adjectivalnoun-line: #128f6a;
+  --adjectivalnoun-text: #0d7a58;
+
+  --adnominal-h: rgba(180, 130, 240, 0.3);
+  --adnominal-h2: rgba(228, 190, 255, 0.72);
+  --adnominal-hu: rgba(180, 130, 240, 0.26);
+  --adnominal-line: #8a5cc4;
+  --adnominal-text: #6a3ba8;
+}
+
+/* 生成り。紙を少し焼いた色にするだけで、画面まわりは既定のまま。
+   長く書くときに白の眩しさを抑える。 */
+:root[data-theme="sepia"] {
+  --paper: #f6efdd;
+  --paper-edge: #d8ceb4;
+  --desk: #e6e0cf;
+  --rule: rgba(150, 120, 70, 0.32);
+  --ink: #33302a;
+}
+
+/* 夜。紙まで暗くする。
+   蛍光ペンは紙に重ねる半透明なので暗い紙でもそのまま効くが、
+   傍線と文字色は暗い紙に暗い色では見えないので明るく振り直す。 */
+:root[data-theme="dark"] {
+  --paper: #23262b;
+  --paper-edge: #3a3f47;
+  --desk: #16181c;
+  --rule: rgba(180, 190, 205, 0.18);
+  --pagerule: rgba(230, 120, 100, 0.45);
+  --ink: #e6e4de;
+  --heading: #93b4e8;
+  --heading1: #f0a08c;
+  --paper-select: rgba(120, 165, 235, 0.35);
+
+  --ui-bg: #1b1d21;
+  --ui-panel: #24272c;
+  --ui-border: #3a3f47;
+  --ui-text: #e6e6ea;
+  --ui-sub: #a0a4ad;
+  --ui-accent: #5b82c4;
+  --ui-on-accent: #fff;
+  --ui-btn: #2c3037;
+  --ui-btn-hover: #363b44;
+  --ui-hover: #2e333b;
+  --ui-current: #364256;
+  --ui-line: #30343b;
+  --ui-err: #e2705c;
+  --ui-err-bg: #3a2a28;
+  --ui-err-text: #f09484;
+  --ui-shadow: rgba(0, 0, 0, 0.5);
+
+  --find-hit: rgba(255, 215, 0, 0.35);
+  --find-current: rgba(255, 150, 40, 0.6);
+  --issue-hit: rgba(255, 90, 90, 0.3);
+  --issue-row: #3a2a28;
+
+  --adverb-h2: rgba(255, 200, 60, 0.5);
+  --adverb-line: #ff8a70;
+  --adverb-text: #ff9c86;
+
+  --adjective-h2: rgba(120, 210, 255, 0.5);
+  --adjective-line: #79b4ef;
+  --adjective-text: #8ec2f5;
+
+  --adjectivalnoun-h2: rgba(150, 240, 190, 0.5);
+  --adjectivalnoun-line: #56cfa5;
+  --adjectivalnoun-text: #6fdcb4;
+
+  --adnominal-h2: rgba(210, 175, 255, 0.5);
+  --adnominal-line: #b592e8;
+  --adnominal-text: #c3a5f0;
 }
 
 * {
@@ -126,18 +246,18 @@ button {
   padding: 3px 11px;
   cursor: pointer;
   border: 1px solid var(--ui-border);
-  background: #fff;
+  background: var(--ui-btn);
   border-radius: 4px;
   color: inherit;
   font-family: inherit;
 }
 button:hover {
-  background: #f0f2f6;
+  background: var(--ui-btn-hover);
 }
 button.toggle.is-on {
   background: var(--ui-accent);
   border-color: var(--ui-accent);
-  color: #fff;
+  color: var(--ui-on-accent);
 }
 
 /* ---------- 検索バー ---------- */
@@ -147,7 +267,7 @@ button.toggle.is-on {
   gap: 8px 16px;
   align-items: center;
   padding: 7px 14px;
-  background: #eef1f6;
+  background: var(--ui-hover);
   border-bottom: 1px solid var(--ui-border);
 }
 .findbar[hidden] {
@@ -172,8 +292,8 @@ button.toggle.is-on {
   font-family: inherit;
 }
 .findbar input.invalid {
-  border-color: #c0392b;
-  background: #fdf1f0;
+  border-color: var(--ui-err);
+  background: var(--ui-err-bg);
 }
 .find-count {
   font-size: 12px;
@@ -193,10 +313,10 @@ button.toggle.is-on {
 
 /* 検索のヒット。品詞マーカーとは別のハイライト名なので共存できる */
 ::highlight(search-hit) {
-  background-color: rgba(255, 215, 0, 0.45);
+  background-color: var(--find-hit);
 }
 ::highlight(search-current) {
-  background-color: rgba(255, 140, 0, 0.75);
+  background-color: var(--find-current);
 }
 
 /* ---------- 目次 ---------- */
@@ -248,10 +368,10 @@ button.toggle.is-on {
   line-height: 1.5;
 }
 .outline-list li:hover {
-  background: #eef1f6;
+  background: var(--ui-hover);
 }
 .outline-list li.is-current {
-  background: #e2e9f5;
+  background: var(--ui-current);
 }
 .outline-list .title {
   flex: 1 1 auto;
@@ -331,7 +451,7 @@ button.toggle.is-on {
   user-select: none;
 }
 .report-settings > summary:hover {
-  background: #eef1f6;
+  background: var(--ui-hover);
 }
 .settings-body {
   padding: 4px 12px 12px;
@@ -404,14 +524,14 @@ button.toggle.is-on {
   cursor: pointer;
   font-size: 12px;
   line-height: 1.6;
-  border-bottom: 1px solid #f0f0f4;
+  border-bottom: 1px solid var(--ui-line);
 }
 .report-list li:hover {
-  background: #eef1f6;
+  background: var(--ui-hover);
 }
 .report-list li.is-current {
-  background: #fdeceb;
-  box-shadow: inset 3px 0 0 #c0392b;
+  background: var(--issue-row);
+  box-shadow: inset 3px 0 0 var(--ui-err);
 }
 .report-list .kind {
   display: inline-block;
@@ -421,6 +541,7 @@ button.toggle.is-on {
   margin-right: 6px;
   color: #fff;
 }
+/* 種類の札は白抜き文字を載せる。配色を変えても読めるので色は固定 */
 .report-list .kind-longsentence { background: #c0392b; }
 .report-list .kind-repeatedending { background: #1e6fb8; }
 .report-list .kind-nearbyrepeat { background: #128f6a; }
@@ -441,8 +562,8 @@ button.toggle.is-on {
 
 /* 指摘箇所の強調。検索や品詞マーカーとは別の名前なので共存する */
 ::highlight(issue-current) {
-  background-color: rgba(255, 90, 90, 0.35);
-  text-decoration: underline 2px #c0392b;
+  background-color: var(--issue-hit);
+  text-decoration: underline 2px var(--ui-err);
 }
 
 /* ---------- 用紙 ---------- */
@@ -472,6 +593,7 @@ button.toggle.is-on {
   border: 1px solid var(--paper-edge);
 
   font-family: var(--novel-font);
+  color: var(--ink);
   font-size: var(--cell);
   line-height: var(--step);
   letter-spacing: 0;
@@ -517,10 +639,40 @@ button.toggle.is-on {
   /* 読みが長くても隣の行の文字を隠さない */
   pointer-events: auto;
 }
-.paper .bouten {
-  text-emphasis: filled sesame;
-  text-emphasis-position: over right;
-  -webkit-text-emphasis: filled sesame;
+/* 傍点。
+   ゴマ点を本文の側に置く（.bouten に text-emphasis を掛ける）と、
+   点のぶんだけ行が太って後ろの行がマス目から外れる。実測では
+   20字40px・行送り48px で 16px ずれた。ルビと同じ理屈。
+
+   そこで点は「文字ごとの入れ物」の疑似要素に描かせ、絶対配置で
+   流れから外す。塊ひとつをまとめて疑似要素にすると、行をまたいで
+   折り返したときに点の位置が合わなくなるので、1文字ずつにする。 */
+.paper .bouten .bt {
+  position: relative;
+}
+/* 点は行間（升と升のあいだ）に自前で描く。
+
+   text-emphasis に描かせると、点は字の外へ 0.5em ほど張り出す。
+   流れの中ならそのぶん行が太って収まるが、行を太らせないために
+   絶対配置にした箱には張り出す余地がないので、点が字に重なる。
+   箱を広げれば重ならないが、今度は行送りが詰まっているときに
+   隣の行の字へ乗る（字送り40px・行送り48px なら 20px はみ出す）。
+
+   行間に収まる大きさの丸を自分で置けば、行送りをいくつにしても
+   隣とぶつからず、行も太らない。 */
+.paper .bouten .bt::after {
+  content: "";
+  position: absolute;
+  /* 字の長さぶん。縦書きでは字の上下いっぱい */
+  inset-inline: 0;
+  /* 字の右脇（行間）へ。縦書きでは block 方向が右から左 */
+  inset-block-start: calc(-1 * var(--dot));
+  block-size: var(--dot);
+  background-image: radial-gradient(circle closest-side, currentColor 96%, transparent 100%);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: var(--dot) var(--dot);
+  pointer-events: none;
 }
 /* 見出し記号（行頭の ＃ の並び）。
    プレビューでは見えなくするが、要素は消さずに置いたままにする。
@@ -532,7 +684,7 @@ button.toggle.is-on {
 /* 塊であることが分かるよう、選んだときだけ薄く敷く */
 .paper ruby::selection,
 .paper .bouten::selection {
-  background: rgba(90, 140, 220, 0.3);
+  background: var(--paper-select);
 }
 
 /* 読みは 0.5em のまま。ここを大きくすると隣の行に掛かる。
@@ -542,10 +694,10 @@ button.toggle.is-on {
    文字サイズを変えるとマス目から外れてしまうので、色だけで示す。
    太字も字送りが変わる書体があるため使わない。 */
 .paper p[data-heading] {
-  color: #1a3a6b;
+  color: var(--heading);
 }
 .paper p[data-heading="1"] {
-  color: #8a2a1a;
+  color: var(--heading1);
 }
 
 /* 空段落が潰れないように 1 行ぶんの幅を持たせる。
@@ -556,15 +708,49 @@ button.toggle.is-on {
   content: "\200B";
 }
 
-/* マス目。先に書いたレイヤーが上に来る */
+/* マス目。先に書いたレイヤーが上に来る。
+
+   升は「行の帯」ではなく「文字の箱」に合わせて引く。
+   縦書きの字は行の帯（--step）の真ん中に置かれるので、帯の端に
+   線を引くと字と線のあいだに半行ぶんの空きができ、升が字を掴んで
+   いないように見える。字が占めるのは帯の中央の --cell ぶんだけ
+   （実測: 字送り40px・行送り48px なら左右に 4px ずつ空く）。
+
+   余った左右の空きはルビと傍点が出る場所。原稿用紙の行間と同じで、
+   ここに線を引かないほうが原稿用紙らしくなる。 */
+.paper {
+  /* 行の帯のうち、字の左右に余る幅。ルビと傍点が出る場所 */
+  --gutter: max(0px, calc((var(--step) - var(--cell)) / 2));
+  /* 傍点の丸の大きさ。行間に収まる範囲で、行送りに応じて育つ */
+  --dot: clamp(2px, var(--gutter), 0.22em);
+}
+
 .grid-full {
   background-image:
+    /* ページの区切り */
     repeating-linear-gradient(
       to left,
       var(--pagerule) 0 2px,
       transparent 2px calc(var(--step) * var(--lines))
     ),
-    repeating-linear-gradient(to left, var(--rule) 0 1px, transparent 1px var(--step)),
+    /* 升の縦線。文字の箱の左右に引く */
+    repeating-linear-gradient(
+      to left,
+      transparent 0 var(--gutter),
+      var(--rule) var(--gutter) calc(var(--gutter) + 1px),
+      transparent calc(var(--gutter) + 1px) calc(var(--gutter) + var(--cell)),
+      var(--rule) calc(var(--gutter) + var(--cell)) calc(var(--gutter) + var(--cell) + 1px),
+      transparent calc(var(--gutter) + var(--cell) + 1px) var(--step)
+    ),
+    /* 行間を紙の色で塗り、横線が升の外へはみ出さないようにする。
+       これがないと横線が行間を突き抜けて、升が箱に見えない */
+    repeating-linear-gradient(
+      to left,
+      var(--paper) 0 var(--gutter),
+      transparent var(--gutter) calc(var(--gutter) + var(--cell)),
+      var(--paper) calc(var(--gutter) + var(--cell)) var(--step)
+    ),
+    /* 升の横線 */
     repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px var(--cell));
 }
 .grid-rules {
@@ -597,52 +783,52 @@ button.toggle.is-on {
    ============================================================ */
 
 /* 傍線（実線） */
-::highlight(adverb-u) { text-decoration: underline 2px #c0392b; }
-::highlight(adjective-u) { text-decoration: underline 2px #1e6fb8; }
-::highlight(adjectivalnoun-u) { text-decoration: underline 2px #128f6a; }
-::highlight(adnominal-u) { text-decoration: underline 2px #8a5cc4; }
+::highlight(adverb-u) { text-decoration: underline 2px var(--adverb-line); }
+::highlight(adjective-u) { text-decoration: underline 2px var(--adjective-line); }
+::highlight(adjectivalnoun-u) { text-decoration: underline 2px var(--adjectivalnoun-line); }
+::highlight(adnominal-u) { text-decoration: underline 2px var(--adnominal-line); }
 
 /* 傍線（破線） */
-::highlight(adverb-d) { text-decoration: underline 2px dashed #c0392b; }
-::highlight(adjective-d) { text-decoration: underline 2px dashed #1e6fb8; }
-::highlight(adjectivalnoun-d) { text-decoration: underline 2px dashed #128f6a; }
-::highlight(adnominal-d) { text-decoration: underline 2px dashed #8a5cc4; }
+::highlight(adverb-d) { text-decoration: underline 2px dashed var(--adverb-line); }
+::highlight(adjective-d) { text-decoration: underline 2px dashed var(--adjective-line); }
+::highlight(adjectivalnoun-d) { text-decoration: underline 2px dashed var(--adjectivalnoun-line); }
+::highlight(adnominal-d) { text-decoration: underline 2px dashed var(--adnominal-line); }
 
 /* 蛍光ペン（淡い） */
-::highlight(adverb-h) { background-color: rgba(255, 122, 90, 0.3); }
-::highlight(adjective-h) { background-color: rgba(90, 165, 255, 0.3); }
-::highlight(adjectivalnoun-h) { background-color: rgba(70, 215, 165, 0.3); }
-::highlight(adnominal-h) { background-color: rgba(180, 130, 240, 0.3); }
+::highlight(adverb-h) { background-color: var(--adverb-h); }
+::highlight(adjective-h) { background-color: var(--adjective-h); }
+::highlight(adjectivalnoun-h) { background-color: var(--adjectivalnoun-h); }
+::highlight(adnominal-h) { background-color: var(--adnominal-h); }
 
 /* 蛍光ペン（濃い） */
-::highlight(adverb-h2) { background-color: rgba(255, 214, 64, 0.72); }
-::highlight(adjective-h2) { background-color: rgba(140, 230, 255, 0.72); }
-::highlight(adjectivalnoun-h2) { background-color: rgba(190, 255, 150, 0.72); }
-::highlight(adnominal-h2) { background-color: rgba(228, 190, 255, 0.72); }
+::highlight(adverb-h2) { background-color: var(--adverb-h2); }
+::highlight(adjective-h2) { background-color: var(--adjective-h2); }
+::highlight(adjectivalnoun-h2) { background-color: var(--adjectivalnoun-h2); }
+::highlight(adnominal-h2) { background-color: var(--adnominal-h2); }
 
 /* 蛍光ペン＋傍線 */
 ::highlight(adverb-hu) {
-  background-color: rgba(255, 122, 90, 0.26);
-  text-decoration: underline 2px #c0392b;
+  background-color: var(--adverb-hu);
+  text-decoration: underline 2px var(--adverb-line);
 }
 ::highlight(adjective-hu) {
-  background-color: rgba(90, 165, 255, 0.26);
-  text-decoration: underline 2px #1e6fb8;
+  background-color: var(--adjective-hu);
+  text-decoration: underline 2px var(--adjective-line);
 }
 ::highlight(adjectivalnoun-hu) {
-  background-color: rgba(70, 215, 165, 0.26);
-  text-decoration: underline 2px #128f6a;
+  background-color: var(--adjectivalnoun-hu);
+  text-decoration: underline 2px var(--adjectivalnoun-line);
 }
 ::highlight(adnominal-hu) {
-  background-color: rgba(180, 130, 240, 0.26);
-  text-decoration: underline 2px #8a5cc4;
+  background-color: var(--adnominal-hu);
+  text-decoration: underline 2px var(--adnominal-line);
 }
 
 /* 文字色のみ */
-::highlight(adverb-c) { color: #b8341f; }
-::highlight(adjective-c) { color: #1558a8; }
-::highlight(adjectivalnoun-c) { color: #0d7a58; }
-::highlight(adnominal-c) { color: #6a3ba8; }
+::highlight(adverb-c) { color: var(--adverb-text); }
+::highlight(adjective-c) { color: var(--adjective-text); }
+::highlight(adjectivalnoun-c) { color: var(--adjectivalnoun-text); }
+::highlight(adnominal-c) { color: var(--adnominal-text); }
 
 /* ------------------------------------------------------------
    傍点の中の品詞マーカー
@@ -657,32 +843,32 @@ button.toggle.is-on {
    両方を直すこと。
    ------------------------------------------------------------ */
 .paper .bmark-adverb {
-  --mk-h: rgba(255, 122, 90, 0.3);
-  --mk-h2: rgba(255, 214, 64, 0.72);
-  --mk-hu: rgba(255, 122, 90, 0.26);
-  --mk-line: #c0392b;
-  --mk-text: #b8341f;
+  --mk-h: var(--adverb-h);
+  --mk-h2: var(--adverb-h2);
+  --mk-hu: var(--adverb-hu);
+  --mk-line: var(--adverb-line);
+  --mk-text: var(--adverb-text);
 }
 .paper .bmark-adjective {
-  --mk-h: rgba(90, 165, 255, 0.3);
-  --mk-h2: rgba(140, 230, 255, 0.72);
-  --mk-hu: rgba(90, 165, 255, 0.26);
-  --mk-line: #1e6fb8;
-  --mk-text: #1558a8;
+  --mk-h: var(--adjective-h);
+  --mk-h2: var(--adjective-h2);
+  --mk-hu: var(--adjective-hu);
+  --mk-line: var(--adjective-line);
+  --mk-text: var(--adjective-text);
 }
 .paper .bmark-adjectivalnoun {
-  --mk-h: rgba(70, 215, 165, 0.3);
-  --mk-h2: rgba(190, 255, 150, 0.72);
-  --mk-hu: rgba(70, 215, 165, 0.26);
-  --mk-line: #128f6a;
-  --mk-text: #0d7a58;
+  --mk-h: var(--adjectivalnoun-h);
+  --mk-h2: var(--adjectivalnoun-h2);
+  --mk-hu: var(--adjectivalnoun-hu);
+  --mk-line: var(--adjectivalnoun-line);
+  --mk-text: var(--adjectivalnoun-text);
 }
 .paper .bmark-adnominal {
-  --mk-h: rgba(180, 130, 240, 0.3);
-  --mk-h2: rgba(228, 190, 255, 0.72);
-  --mk-hu: rgba(180, 130, 240, 0.26);
-  --mk-line: #8a5cc4;
-  --mk-text: #6a3ba8;
+  --mk-h: var(--adnominal-h);
+  --mk-h2: var(--adnominal-h2);
+  --mk-hu: var(--adnominal-hu);
+  --mk-line: var(--adnominal-line);
+  --mk-text: var(--adnominal-text);
 }
 
 .paper[data-mark-style="u"] .bmark { text-decoration: underline 2px var(--mk-line); }
@@ -714,10 +900,10 @@ button.toggle.is-on {
      内側に食い込ませる */
   margin-right: -2px;
 }
-.sidemark-adverb { border-right-color: #c0392b; }
-.sidemark-adjective { border-right-color: #1e6fb8; }
-.sidemark-adjectivalnoun { border-right-color: #128f6a; }
-.sidemark-adnominal { border-right-color: #8a5cc4; }
+.sidemark-adverb { border-right-color: var(--adverb-line); }
+.sidemark-adjective { border-right-color: var(--adjective-line); }
+.sidemark-adjectivalnoun { border-right-color: var(--adjectivalnoun-line); }
+.sidemark-adnominal { border-right-color: var(--adnominal-line); }
 
 /* ---------- ルビ入力の小窓 ---------- */
 .rubybox {
@@ -730,7 +916,7 @@ button.toggle.is-on {
   background: var(--ui-panel);
   border: 1px solid var(--ui-border);
   border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 18px var(--ui-shadow);
   font-size: 12px;
   color: var(--ui-sub);
 }
@@ -739,7 +925,7 @@ button.toggle.is-on {
 }
 .rubybox-base {
   font-weight: 600;
-  color: var(--ui-fg, #222);
+  color: var(--ui-text);
   max-inline-size: 10em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -770,5 +956,5 @@ button.toggle.is-on {
   margin-left: auto;
 }
 .statusbar .err {
-  color: #9c2222;
+  color: var(--ui-err-text);
 }

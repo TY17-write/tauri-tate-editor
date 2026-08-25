@@ -148,24 +148,16 @@ export function paintAtomMarks(atom: HTMLElement, parts: AtomPart[]): boolean {
   const sig = sorted.map((p) => `${p.start}:${p.end}:${p.pos}`).join(",");
   if ((atom.dataset.marksig ?? "") === sig) return false;
 
-  const text = atom.textContent ?? "";
-  const frag = document.createDocumentFragment();
-  let cut = 0;
-  for (const part of sorted) {
-    const a = Math.max(0, Math.min(part.start, text.length));
-    const b = Math.max(a, Math.min(part.end, text.length));
-    // 重なっている場合は後ろ側を諦める（色の二重掛けを避ける）
-    if (a >= b || a < cut) continue;
-    if (a > cut) frag.appendChild(document.createTextNode(text.slice(cut, a)));
-    const span = document.createElement("span");
-    span.className = `bmark bmark-${part.pos}`;
-    span.textContent = text.slice(a, b);
-    frag.appendChild(span);
-    cut = b;
+  // 傍点の中身は文字ごとの入れ物（notation.ts の fillBouten）。
+  // 中身を組み直さず、掛かった字に class を足すだけにする。
+  // 組み直すと点を描いている疑似要素まで作り直すことになる。
+  const units = Array.from(atom.querySelectorAll<HTMLElement>(".bt"));
+  for (let i = 0; i < units.length; i++) {
+    const hit = sorted.find((p) => p.start <= i && i < p.end);
+    units[i].classList.remove("bmark", ...ALL_POS.map((p) => `bmark-${p}`));
+    if (hit) units[i].classList.add("bmark", `bmark-${hit.pos}`);
   }
-  if (cut < text.length) frag.appendChild(document.createTextNode(text.slice(cut)));
 
-  atom.replaceChildren(frag);
   if (sig) atom.dataset.marksig = sig;
   else delete atom.dataset.marksig;
   return true;
@@ -179,7 +171,9 @@ export function paintAtomMarks(atom: HTMLElement, parts: AtomPart[]): boolean {
 export function clearAtomMarks(el: HTMLElement): boolean {
   let touched = false;
   for (const atom of Array.from(el.querySelectorAll<HTMLElement>("[data-marksig]"))) {
-    atom.textContent = atom.textContent ?? "";
+    for (const unit of Array.from(atom.querySelectorAll<HTMLElement>(".bt"))) {
+      unit.classList.remove("bmark", ...ALL_POS.map((p) => `bmark-${p}`));
+    }
     delete atom.dataset.marksig;
     touched = true;
   }

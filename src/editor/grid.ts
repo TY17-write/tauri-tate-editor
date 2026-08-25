@@ -49,6 +49,9 @@ export function applyLayout(layout: Layout): void {
   s.setProperty("--cell", `${layout.cell}px`);
   s.setProperty("--step", `${layout.step}px`);
   s.setProperty("--novel-font", layout.font);
+  // 印刷では文字の大きさを用紙から決め直すので、px ではなく
+  // 「字送りに対する行送りの比」を渡す（print.css を参照）
+  s.setProperty("--step-ratio", String(layout.step / layout.cell));
 }
 
 /** その書体でマス目が成立するか（約物が全角のままか）。 */

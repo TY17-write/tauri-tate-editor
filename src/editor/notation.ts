@@ -260,10 +260,33 @@ export function buildPreviewPara(pieces: Piece[]): HTMLParagraphElement {
     em.className = "bouten";
     em.dataset.src = piece.src;
     em.dataset.text = piece.text;
-    em.textContent = piece.text;
+    fillBouten(em, piece.text);
     p.appendChild(em);
   }
   return p;
+}
+
+/**
+ * 傍点の塊の中身を、文字ごとの入れ物に組み直す。
+ *
+ * ゴマ点は `text-emphasis` で描くが、本文の側に置くと行の高さが
+ * 増えて、後ろの行がマス目から外れる（実測で 20字40px・行送り48px
+ * のとき 16px ずれた）。点は文字ごとの疑似要素に描かせ、絶対配置で
+ * 流れから外す。
+ *
+ * 塊ひとつをまとめて疑似要素にすると、行をまたいで折り返したときに
+ * 点の位置が合わなくなる。1文字ずつなら折り返しの境目でしか切れず、
+ * どの文字の点も必ずその文字の上に出る。
+ */
+export function fillBouten(el: HTMLElement, text: string): void {
+  const frag = document.createDocumentFragment();
+  for (const ch of Array.from(text)) {
+    const unit = document.createElement("span");
+    unit.className = "bt";
+    unit.textContent = ch;
+    frag.appendChild(unit);
+  }
+  el.replaceChildren(frag);
 }
 
 /** ルビの親文字。読み（rt）は数えない。 */
@@ -345,6 +368,8 @@ export function commitPreviewEdits(root: HTMLElement, forms: NotationForms | nul
     if (text === el.dataset.text) continue;
     el.dataset.src = emphasisSource(forms, text);
     el.dataset.text = text;
+    // 打ち替えられた字にも点が出るよう、文字ごとの入れ物を組み直す
+    fillBouten(el, text);
   }
 }
 

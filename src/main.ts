@@ -32,7 +32,6 @@ import {
 import type { Issue, IssueKind, StyleOptions, StyleReport } from "./editor/style";
 import { VerticalScroller } from "./editor/scroll";
 import {
-  DEFAULT_LAYOUT,
   FONTS,
   PRESETS,
   applyLayout,
@@ -50,6 +49,14 @@ import {
   saveWithDialog,
   takeAutosave,
 } from "./editor/files";
+import {
+  THEMES,
+  applyTheme,
+  loadSettings,
+  presetFor,
+  saveSettings,
+} from "./editor/settings";
+import type { GridMode, Settings, ThemeName } from "./editor/settings";
 import type { Layout, MarkStyle, PosTag } from "./editor/types";
 
 const SAMPLE = [
@@ -95,7 +102,42 @@ const statusPage = $<HTMLElement>("status-page");
 const statusMark = $<HTMLElement>("status-mark");
 const statusMsg = $<HTMLElement>("status-msg");
 
-const layout: Layout = { ...DEFAULT_LAYOUT };
+/* ---------- 設定 ----------
+   前に開いたときの見た目で始める。読み出したものは settings.ts が
+   既定値に重ねて整えてあるので、ここでは素直に使ってよい。 */
+const settings = loadSettings();
+const layout: Layout = { ...settings.layout };
+let theme: ThemeName = settings.theme;
+applyTheme(theme);
+
+/** いまの画面の状態を、そのまま設定の形にする。 */
+function collect(): Settings {
+  return {
+    layout: { ...layout },
+    fit: fitCheck.checked,
+    preset: presetSel.value,
+    grid: gridSel.value as GridMode,
+    markStyle: markStyleSel.value as MarkStyle,
+    markerOn: session.marker.options.enabled,
+    pos: [...session.marker.options.visible],
+    preview: session.editMode === "preview",
+    theme,
+  };
+}
+
+/**
+ * 設定を書き出す。
+ *
+ * つまみを動かすたびに書くと無駄が多いので、少し置いてからまとめる。
+ */
+let saveTimer: number | null = null;
+function scheduleSave(): void {
+  if (saveTimer !== null) window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    saveTimer = null;
+    saveSettings(collect());
+  }, 300);
+}
 
 /* ---------- 書体の選択肢 ---------- */
 const fontSel = $<HTMLSelectElement>("font");
@@ -196,6 +238,7 @@ function refreshLayout(): void {
   fitCellToViewport();
   checkFontWarning();
   updateStatus();
+  scheduleSave();
 }
 
 fitCheck.addEventListener("change", () => {
@@ -232,9 +275,11 @@ cellRange.addEventListener("input", () => {
   layout.cell = Number(cellRange.value);
   applyLayout(layout);
   updateStatus();
+  scheduleSave();
 });
-$<HTMLInputElement>("step").addEventListener("input", (e) => {
-  layout.step = Number((e.target as HTMLInputElement).value);
+const stepRange = $<HTMLInputElement>("step");
+stepRange.addEventListener("input", () => {
+  layout.step = Number(stepRange.value);
   refreshLayout();
 });
 fontSel.addEventListener("change", () => {
@@ -242,33 +287,58 @@ fontSel.addEventListener("change", () => {
   refreshLayout();
 });
 
-$<HTMLSelectElement>("gridMode").addEventListener("change", (e) => {
-  const v = (e.target as HTMLSelectElement).value;
+const gridSel = $<HTMLSelectElement>("gridMode");
+
+/** マス目の描き方を用紙に反映する。 */
+function applyGrid(mode: GridMode): void {
   paper.classList.remove("grid-full", "grid-rules", "grid-page");
-  if (v) paper.classList.add(v);
+  if (mode) paper.classList.add(mode);
   checkFontWarning();
+}
+
+gridSel.addEventListener("change", () => {
+  applyGrid(gridSel.value as GridMode);
+  scheduleSave();
+});
+
+/* ---------- 配色 ---------- */
+const themeSel = $<HTMLSelectElement>("theme");
+for (const t of THEMES) {
+  const o = document.createElement("option");
+  o.value = t.value;
+  o.textContent = t.label;
+  themeSel.appendChild(o);
+}
+themeSel.addEventListener("change", () => {
+  theme = themeSel.value as ThemeName;
+  applyTheme(theme);
+  scheduleSave();
 });
 
 /* ---------- マーカー ---------- */
-$<HTMLSelectElement>("markStyle").addEventListener("change", (e) => {
-  session.marker.setOptions({ style: (e.target as HTMLSelectElement).value as MarkStyle });
+const markStyleSel = $<HTMLSelectElement>("markStyle");
+markStyleSel.addEventListener("change", () => {
+  session.marker.setOptions({ style: markStyleSel.value as MarkStyle });
   session.renderMarks();
   updateStatus();
+  scheduleSave();
 });
 
-for (const cb of Array.from(
+/** 品詞のチェック箱。 */
+const posChecks = Array.from(
   document.querySelectorAll<HTMLInputElement>(".pos-toggles input[data-pos]"),
-)) {
+);
+
+for (const cb of posChecks) {
   cb.addEventListener("change", () => {
     const visible = new Set<PosTag>();
-    for (const el of Array.from(
-      document.querySelectorAll<HTMLInputElement>(".pos-toggles input[data-pos]"),
-    )) {
+    for (const el of posChecks) {
       if (el.checked) visible.add(el.dataset.pos as PosTag);
     }
     session.marker.setOptions({ visible });
     session.renderMarks();
     updateStatus();
+    scheduleSave();
   });
 }
 
@@ -279,7 +349,28 @@ btnMarker.addEventListener("click", () => {
   btnMarker.classList.toggle("is-on", on);
   session.renderMarks();
   updateStatus();
+  scheduleSave();
 });
+
+/* ---------- 印刷 ---------- */
+
+/**
+ * 印刷する。PDF は印刷ダイアログの「PDF として保存」で作る。
+ *
+ * 見た目は print.css が決める。用紙は A4 横で、1行の字数から
+ * 文字の大きさを決め直すので、画面の文字サイズは関係しない。
+ *
+ * 検索や指摘の強調が残っていると刷り込まれてしまうので、先に消す。
+ */
+function doPrint(): void {
+  closeFind();
+  clearIssueHighlight();
+  statusMsg.textContent = "印刷（PDF は印刷ダイアログの「PDF として保存」から）";
+  statusMsg.classList.remove("err");
+  window.print();
+}
+
+$<HTMLButtonElement>("btnPrint").addEventListener("click", doPrint);
 
 /* ---------- 正規化 ---------- */
 $<HTMLButtonElement>("btnNormalize").addEventListener("click", () => {
@@ -459,6 +550,7 @@ async function setMode(mode: EditMode): Promise<void> {
       mode === "preview" ? "プレビュー表示。ルビもその場で直せます" : "記法表示";
     statusMsg.classList.remove("err");
     updateStatus();
+    scheduleSave();
   } catch (err) {
     statusMsg.textContent = `表示を切り替えられません: ${String(err)}`;
     statusMsg.classList.add("err");
@@ -1043,6 +1135,12 @@ window.addEventListener("keydown", (e) => {
       void setMode(session.editMode === "source" ? "preview" : "source");
       return;
     }
+    if (k === "p") {
+      // ブラウザ既定の印刷でも刷れるが、強調を消してから出したい
+      e.preventDefault();
+      doPrint();
+      return;
+    }
   }
 
   // F3 は本文にフォーカスがあっても効かせる
@@ -1082,6 +1180,29 @@ window.addEventListener("keydown", (e) => {
 });
 
 /* ---------- 起動 ---------- */
+
+/* 覚えていた設定を画面に配る。
+   つまみの値と実際の状態がずれると、次に保存したときに食い違うので、
+   ここで一度に揃えてしまう。 */
+presetSel.value = settings.preset === "custom" ? "custom" : presetFor(layout);
+charsInput.value = String(layout.chars);
+linesInput.value = String(layout.lines);
+cellRange.value = String(layout.cell);
+stepRange.value = String(layout.step);
+fontSel.value = layout.font;
+gridSel.value = settings.grid;
+themeSel.value = theme;
+markStyleSel.value = settings.markStyle;
+fitCheck.checked = settings.fit;
+for (const cb of posChecks) cb.checked = settings.pos.includes(cb.dataset.pos as PosTag);
+btnMarker.classList.toggle("is-on", settings.markerOn);
+session.marker.setOptions({
+  style: settings.markStyle,
+  enabled: settings.markerOn,
+  visible: new Set(settings.pos),
+});
+applyGrid(settings.grid);
+
 cellRange.disabled = fitCheck.checked;
 applyLayout(layout);
 fitCellToViewport();
@@ -1092,8 +1213,9 @@ if (!MarkerLayer.supported) {
 }
 // ルビと傍点のコマンドは、プレビューを開いていなくても記法の書き方が要る
 void session.setNotation(notation);
-void session.setText(SAMPLE).then(() => {
-  // 本文が入ってからでないとスクロール量を測れない
+void session.setText(SAMPLE).then(async () => {
+  // 本文が入ってからでないと、プレビューも組めないしスクロール量も測れない
+  if (settings.preview) await setMode("preview");
   scroller.calibrate();
   scroller.toHead();
   paper.focus();
