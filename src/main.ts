@@ -186,6 +186,7 @@ $<HTMLSelectElement>("gridMode").addEventListener("change", (e) => {
 /* ---------- マーカー ---------- */
 $<HTMLSelectElement>("markStyle").addEventListener("change", (e) => {
   session.marker.setOptions({ style: (e.target as HTMLSelectElement).value as MarkStyle });
+  session.renderMarks();
   updateStatus();
 });
 
@@ -200,6 +201,7 @@ for (const cb of Array.from(
       if (el.checked) visible.add(el.dataset.pos as PosTag);
     }
     session.marker.setOptions({ visible });
+    session.renderMarks();
     updateStatus();
   });
 }
@@ -209,6 +211,7 @@ btnMarker.addEventListener("click", () => {
   const on = !session.marker.options.enabled;
   session.marker.setOptions({ enabled: on });
   btnMarker.classList.toggle("is-on", on);
+  session.renderMarks();
   updateStatus();
 });
 

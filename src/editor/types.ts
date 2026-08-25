@@ -37,8 +37,20 @@ export interface AnalyzeResult {
   marks: Mark[];
 }
 
-/** マーカーの表示スタイル。CSS のハイライト名の接尾辞になる。 */
-export type MarkStyle = "h" | "h2" | "u" | "d" | "hu" | "c";
+/**
+ * マーカーの表示スタイル。
+ *
+ * "sr" 以外は CSS Custom Highlight API で描き、接尾辞がそのまま
+ * ハイライト名になる（`adverb-h` など）。
+ * "sr"（傍線・右）だけは Highlight API では実現できないため、
+ * DOM に span を挿す方式になる。
+ */
+export type MarkStyle = "h" | "h2" | "u" | "d" | "hu" | "c" | "sr";
+
+/** その表示スタイルが DOM の書き換えを伴うか。 */
+export function usesDomWrite(style: MarkStyle): boolean {
+  return style === "sr";
+}
 
 /** 組版の設定。 */
 export interface Layout {

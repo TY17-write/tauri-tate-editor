@@ -13,7 +13,8 @@
  *  ・text-emphasis（傍点）は使えない。
  */
 
-import { ALL_POS, idKey } from "./types";
+import { clearSideMarks, paintSideMarks } from "./sidemark";
+import { ALL_POS, idKey, usesDomWrite } from "./types";
 import type { Mark, MarkStyle, ParaId, PosTag } from "./types";
 
 export interface MarkerOptions {
@@ -43,13 +44,22 @@ export class MarkerLayer {
     return typeof CSS !== "undefined" && "highlights" in CSS;
   }
 
+  /**
+   * 表示設定を変える。描画はしないので、呼び出し側が続けて
+   * `render()` を呼ぶこと。傍線（右）はキャレットの保存と復元を
+   * 伴うため、描画のタイミングを Session に握らせている。
+   */
   setOptions(patch: Partial<MarkerOptions>): void {
     this.opts = { ...this.opts, ...patch };
-    this.render();
   }
 
   get options(): Readonly<MarkerOptions> {
     return this.opts;
+  }
+
+  /** いまの表示スタイルが DOM の書き換えを伴うか。 */
+  get usesDom(): boolean {
+    return usesDomWrite(this.opts.style);
   }
 
   /** 段落一件分のマーカーを差し替える。 */
@@ -75,9 +85,28 @@ export class MarkerLayer {
    * 変更のあった段落だけ set() し直せば済む。
    */
   render(): void {
+    this.lastCount = 0;
+
+    // 傍線（右）だけは Highlight API では描けないので span を挿す
+    if (this.usesDom) {
+      if (MarkerLayer.supported) CSS.highlights.clear();
+      for (const { el, marks } of this.entries.values()) {
+        if (!this.opts.enabled) {
+          clearSideMarks(el);
+          continue;
+        }
+        paintSideMarks(el, marks, this.opts.visible);
+        this.lastCount += marks.filter((m) => this.opts.visible.has(m.pos)).length;
+      }
+      return;
+    }
+
+    // 直前まで span 方式だったなら、テキストノード1つの状態に戻す。
+    // 戻す前に Range を張ると相手のノードが見つからない。
+    for (const { el } of this.entries.values()) clearSideMarks(el);
+
     if (!MarkerLayer.supported) return;
     CSS.highlights.clear();
-    this.lastCount = 0;
     if (!this.opts.enabled) return;
 
     const buckets = new Map<PosTag, Range[]>();

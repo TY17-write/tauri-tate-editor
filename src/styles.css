@@ -261,6 +261,28 @@ button.toggle.is-on {
 ::highlight(adjectivalnoun-c) { color: #0d7a58; }
 ::highlight(adnominal-c) { color: #6a3ba8; }
 
+/* ------------------------------------------------------------
+   傍線（右）─ span を挿して border を引く方式
+
+   Highlight API では傍線が必ず文字の左側に出るため、日本語の
+   慣習どおり右側に引きたい場合はこちらを使う。
+   縦書きでは border-right が文字の右脇に当たる。
+   行をまたぐ span は inline box が分割されるので、
+   box-decoration-break: clone で行ごとに線を引く。
+   ------------------------------------------------------------ */
+.sidemark {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  border-right: 2px solid transparent;
+  /* 線のぶんだけ字送りがずれてマス目から外れないよう、
+     内側に食い込ませる */
+  margin-right: -2px;
+}
+.sidemark-adverb { border-right-color: #c0392b; }
+.sidemark-adjective { border-right-color: #1e6fb8; }
+.sidemark-adjectivalnoun { border-right-color: #128f6a; }
+.sidemark-adnominal { border-right-color: #8a5cc4; }
+
 /* ---------- ステータスバー ---------- */
 .statusbar {
   display: flex;
