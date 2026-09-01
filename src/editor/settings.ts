@@ -35,9 +35,9 @@ export const THEMES: { value: ThemeName; label: string }[] = [
 
 /** 画面の見た目に関わる設定ひとまとめ。 */
 export interface Settings {
+  /** 判型と書体。文字サイズと行送りは字数と画面から決め直すので、
+      cell / step は覚えていても目安にしかならない */
   layout: Layout;
-  /** 用紙を画面の高さに合わせるか */
-  fit: boolean;
   /** 判型の選択。カスタムなら "custom" */
   preset: string;
   grid: GridMode;
@@ -53,7 +53,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   layout: { ...DEFAULT_LAYOUT },
-  fit: true,
   preset: "20,20",
   grid: "grid-full",
   markStyle: "h",
@@ -63,12 +62,13 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "light",
 };
 
-/** 文字サイズと行送りの上下限。index.html の range と揃えること。 */
+/** 各数値の上下限。chars / lines は index.html の入力欄と揃えること。
+    cell / step は自動計算の取りうる幅（cell 8〜48 × 行送り比）。 */
 const LIMITS = {
   chars: [5, 80],
   lines: [3, 40],
   cell: [8, 48],
-  step: [16, 70],
+  step: [12, 96],
 } as const;
 
 const STORE_KEY = "tate-editor.settings";
@@ -108,7 +108,6 @@ function clean(raw: unknown): Settings {
       // 手元にない書体を覚えていても、表にないものは使わない
       font: FONTS.some((f) => f.value === o0(layout.font)) ? String(layout.font) : DEFAULT_LAYOUT.font,
     },
-    fit: bool(o.fit, DEFAULT_SETTINGS.fit),
     preset: preset(o.preset),
     grid: pick(o.grid, GRID_MODES, DEFAULT_SETTINGS.grid),
     markStyle: pick(o.markStyle, MARK_STYLES, DEFAULT_SETTINGS.markStyle),

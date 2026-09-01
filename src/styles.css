@@ -148,6 +148,26 @@
   --adnominal-text: #c3a5f0;
 }
 
+/* ------------------------------------------------------------
+   半角英数かなを、どの書体でもちょうど 0.5em で送らせる。
+
+   半角の幅は書体ごとにまちまち（游明朝の英数はプロポーショナル）で、
+   そのままではマス目に乗らない。MS 明朝・MS ゴシックの半角は
+   等幅 0.5em なので、半角の範囲だけこの二つへ振り向ける。
+   本文の書体スタックの先頭に置くと、範囲内の字はこちらが受け、
+   全角の字は範囲外なので後ろの書体へ抜ける。
+   ------------------------------------------------------------ */
+@font-face {
+  font-family: "TateHalfMincho";
+  src: local("MS Mincho"), local("MS 明朝");
+  unicode-range: U+0020-007E, U+00A5, U+FF61-FF9F;
+}
+@font-face {
+  font-family: "TateHalfGothic";
+  src: local("MS Gothic"), local("MS ゴシック");
+  unicode-range: U+0020-007E, U+00A5, U+FF61-FF9F;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -573,6 +593,15 @@ button.toggle.is-on {
   background: var(--desk);
   padding: 20px;
   min-height: 0;
+  /* 縦書きの原稿は右端の行から始まる。用紙が画面より狭いときに
+     左へ寄っていると起点が分からないので、右へ寄せる。
+     margin-left: auto は用紙が画面からあふれると 0 になり、
+     ふつうの横スクロールに戻る（scroll.ts が右端まで送る）。 */
+  display: flex;
+  align-items: flex-start;
+}
+.viewport > .paper {
+  margin-left: auto;
 }
 
 /* 縦書きでは論理軸が入れ替わる。
@@ -599,7 +628,15 @@ button.toggle.is-on {
   letter-spacing: 0;
   font-kerning: none;
   font-variant-ligatures: none;
-  /* 約物が詰まるとマス目から外れるので明示的に止める */
+  /* 約物が詰まるとマス目から外れるので明示的に止める。
+     palt/vpal だけでは足りない。Chromium は既定で
+     text-spacing-trim: normal を効かせ、halt/vhal を持つ書体
+     （游明朝など）の約物を勝手に半角へ詰める。space-all で止めると
+     游明朝でも約物が全角のまま升に乗る。
+     text-autospace は和欧間に 1/8em を差し込む機能。升が割れるので
+     こちらも止める。 */
+  text-spacing-trim: space-all;
+  text-autospace: no-autospace;
   font-feature-settings: "palt" 0, "vpal" 0;
   line-break: strict;
   outline: none;
@@ -629,7 +666,11 @@ button.toggle.is-on {
    縦書き（vertical-rl）では block 方向が右→左なので、
    inset-block-end: 100% で親文字の右脇に出る。 */
 .paper ruby rt {
-  font-size: 0.5em;
+  /* 読みの太さは 0.5em。行送りは STEP_RATIO（grid.ts）で
+     0.7em の行間を確保してあるので、丸ごと行間に収まる。
+     行間が万一それより狭くなっても、読みを行間の幅まで縮めて
+     隣の行の字には乗せない（--gutter は行間の半分）。 */
+  font-size: min(0.5em, calc(var(--gutter, 0.35em) * 2 - 1px));
   line-height: 1;
   position: absolute;
   inset-block-end: 100%;

@@ -32,8 +32,10 @@ import {
 import type { Issue, IssueKind, StyleOptions, StyleReport } from "./editor/style";
 import { VerticalScroller } from "./editor/scroll";
 import {
+  CELL_LIMITS,
   FONTS,
   PRESETS,
+  STEP_RATIO,
   applyLayout,
   charsPerPage,
   countNormalizable,
@@ -114,7 +116,6 @@ applyTheme(theme);
 function collect(): Settings {
   return {
     layout: { ...layout },
-    fit: fitCheck.checked,
     preset: presetSel.value,
     grid: gridSel.value as GridMode,
     markStyle: markStyleSel.value as MarkStyle,
@@ -212,24 +213,22 @@ function checkFontWarning(): void {
   }
 }
 
-/* ---------- 用紙を画面高さに合わせる ----------
-   1行の字数が多い判型（文庫の 42 字など）では、用紙の高さが
-   ウィンドウを超えて下が見切れる。文字サイズを下げて収める。
-   実際の文庫本も、1行が長い分だけ文字が小さい。 */
-const cellRange = $<HTMLInputElement>("cell");
-const fitCheck = $<HTMLInputElement>("fitHeight");
-
+/* ---------- 文字サイズと行送りは字数から自動で決める ----------
+   1行の字数が多い判型（文庫の 42 字など）ほど文字を小さくして、
+   1行がちょうど画面の高さに収まるようにする。実際の文庫本も、
+   1行が長い分だけ文字が小さい。行送りは字送りの STEP_RATIO 倍。
+   ルビと傍点の場所（行間）はこの比で確保される（grid.ts を参照）。 */
 function fitCellToViewport(): void {
-  if (!fitCheck.checked) return;
   const style = getComputedStyle(viewport);
   const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
   const border = 2; // 用紙の枠線
   const usable = viewport.clientHeight - pad - border;
   const cell = Math.floor(usable / layout.chars);
-  const clamped = Math.max(Number(cellRange.min), Math.min(Number(cellRange.max), cell));
-  if (clamped === layout.cell) return;
+  const clamped = Math.max(CELL_LIMITS[0], Math.min(CELL_LIMITS[1], cell));
+  const step = Math.round(clamped * STEP_RATIO);
+  if (clamped === layout.cell && step === layout.step) return;
   layout.cell = clamped;
-  cellRange.value = String(clamped);
+  layout.step = step;
   applyLayout(layout);
 }
 
@@ -241,10 +240,6 @@ function refreshLayout(): void {
   scheduleSave();
 }
 
-fitCheck.addEventListener("change", () => {
-  cellRange.disabled = fitCheck.checked;
-  refreshLayout();
-});
 new ResizeObserver(() => fitCellToViewport()).observe(viewport);
 
 const presetSel = $<HTMLSelectElement>("preset");
@@ -269,17 +264,6 @@ charsInput.addEventListener("input", () => {
 linesInput.addEventListener("input", () => {
   layout.lines = Number(linesInput.value) || layout.lines;
   presetSel.value = "custom";
-  refreshLayout();
-});
-cellRange.addEventListener("input", () => {
-  layout.cell = Number(cellRange.value);
-  applyLayout(layout);
-  updateStatus();
-  scheduleSave();
-});
-const stepRange = $<HTMLInputElement>("step");
-stepRange.addEventListener("input", () => {
-  layout.step = Number(stepRange.value);
   refreshLayout();
 });
 fontSel.addEventListener("change", () => {
@@ -1187,13 +1171,10 @@ window.addEventListener("keydown", (e) => {
 presetSel.value = settings.preset === "custom" ? "custom" : presetFor(layout);
 charsInput.value = String(layout.chars);
 linesInput.value = String(layout.lines);
-cellRange.value = String(layout.cell);
-stepRange.value = String(layout.step);
 fontSel.value = layout.font;
 gridSel.value = settings.grid;
 themeSel.value = theme;
 markStyleSel.value = settings.markStyle;
-fitCheck.checked = settings.fit;
 for (const cb of posChecks) cb.checked = settings.pos.includes(cb.dataset.pos as PosTag);
 btnMarker.classList.toggle("is-on", settings.markerOn);
 session.marker.setOptions({
@@ -1203,7 +1184,6 @@ session.marker.setOptions({
 });
 applyGrid(settings.grid);
 
-cellRange.disabled = fitCheck.checked;
 applyLayout(layout);
 fitCellToViewport();
 void currentPath().then(setStatusFile).catch(() => setStatusFile(null));

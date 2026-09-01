@@ -7,7 +7,10 @@
  *    そのため自前で行分割を実装する必要はない。
  *  ・マス目を壊すのは半角幅で描画される文字だけ。U+2014 EM DASH が
  *    MS明朝・BIZ UD明朝で半角になるのが代表例。→ normalizeText で対処
- *  ・游明朝は約物（、。「」）が詰まるためマス目には使えない。
+ *  ・游明朝の約物（、。「」）が詰まっていた原因は書体ではなく、
+ *    Chromium の text-spacing-trim 既定値。space-all で止めれば
+ *    游明朝・游ゴシックも全書体で升に乗る（実測で全角 1em・半角
+ *    0.5em を確認）。→ styles.css の .paper と TateHalf* を参照
  */
 
 import type { Layout } from "./types";
@@ -23,21 +26,41 @@ export const PRESETS: Record<string, { chars: number; lines: number; label: stri
 
 /**
  * 本文の書体。
- * マス目モードでは約物まで全角で揃う等幅フォントしか使えない。
+ *
+ * 全角の字はどの書体でも 1em 送りなので升に乗る。乗らないのは
+ *  ・約物 … Chromium が既定で詰める（text-spacing-trim）。
+ *    styles.css で space-all を指定して止めてある
+ *  ・半角英数 … 書体によって幅がまちまち。先頭に半角専用の
+ *    フォールバック（TateHalf*、styles.css の @font-face）を置き、
+ *    どの書体でもちょうど 0.5em（1マスに2字）で送らせる
+ * この二つを押さえたので、どの書体でも升が字を掴む。
  */
 export const FONTS: { value: string; label: string; grid: boolean }[] = [
-  { value: '"MS 明朝", "MS Mincho", serif', label: "MS 明朝", grid: true },
-  { value: '"BIZ UDMincho", serif', label: "BIZ UD明朝", grid: true },
-  { value: '"MS ゴシック", "MS Gothic", monospace', label: "MS ゴシック", grid: true },
-  { value: '"游明朝", "Yu Mincho", serif', label: "游明朝（約物が詰まる）", grid: false },
-  { value: '"游ゴシック", "Yu Gothic", sans-serif', label: "游ゴシック（約物が詰まる）", grid: false },
+  { value: 'TateHalfMincho, "MS 明朝", "MS Mincho", serif', label: "MS 明朝", grid: true },
+  { value: 'TateHalfMincho, "BIZ UDMincho", serif', label: "BIZ UD明朝", grid: true },
+  { value: 'TateHalfGothic, "MS ゴシック", "MS Gothic", monospace', label: "MS ゴシック", grid: true },
+  { value: 'TateHalfMincho, "游明朝", "Yu Mincho", serif', label: "游明朝", grid: true },
+  { value: 'TateHalfGothic, "游ゴシック", "Yu Gothic", sans-serif', label: "游ゴシック", grid: true },
 ];
+
+/**
+ * 字送りに対する行送りの比。行送りはここから自動で決まる。
+ *
+ * 行と行のあいだには「字の箱」どうしの空きが (比 - 1)em できる。
+ * ルビ（0.5em）と傍点はこの空きに出るので、比を 1.7 にしておけば
+ * 0.7em の空きに収まり、隣の行の字に乗らない。1.5 を切るとルビが
+ * 前の行へはみ出す。
+ */
+export const STEP_RATIO = 1.7;
+
+/** 文字サイズの上下限(px)。画面に合わせて自動で決めるときに丸める。 */
+export const CELL_LIMITS = [8, 48] as const;
 
 export const DEFAULT_LAYOUT: Layout = {
   chars: 20,
   lines: 20,
   cell: 24,
-  step: 38,
+  step: Math.round(24 * STEP_RATIO),
   font: FONTS[0].value,
 };
 
