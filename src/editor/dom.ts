@@ -358,7 +358,7 @@ export function paraOf(paper: HTMLElement, node: Node): HTMLElement | null {
  * プレビューの塊は `data-src` を持っている。段落そのものに行き
  * 当たったら塊の外。
  */
-function findAtom(para: HTMLElement, node: Node): HTMLElement | null {
+export function findAtom(para: HTMLElement, node: Node): HTMLElement | null {
   let cur: Node | null = node;
   while (cur && cur !== para) {
     if (cur.nodeType === Node.ELEMENT_NODE && (cur as HTMLElement).dataset.src !== undefined) {

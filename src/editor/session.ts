@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   caretOffset,
   createPara,
+  findAtom,
   insertTextAtCaret,
   normalizeStructure,
   paraOf,
@@ -37,7 +38,7 @@ import {
   toggleEmphasisAt,
 } from "./notation";
 import type { Notation, NotationForms } from "./notation";
-import { domRange, headingEnd, plainOnly, readSegments, srcOffsetAt } from "./segment";
+import { domRange, headingEnd, plainOnly, readSegments, srcLength, srcOffsetAt } from "./segment";
 import type { Segment } from "./segment";
 import { idKey } from "./types";
 import type { AnalyzeResult, ParaId, ParaView } from "./types";
@@ -55,6 +56,25 @@ export type EditMode = "source" | "preview";
 
 /** 入力が止まってから解析を投げるまでの待ち時間(ms)。 */
 const DEBOUNCE_MS = 250;
+
+/** 手前へ消す削除の inputType。 */
+const DELETE_BACKWARD = new Set([
+  "deleteContentBackward",
+  "deleteWordBackward",
+  "deleteSoftLineBackward",
+  "deleteHardLineBackward",
+]);
+
+/** 先へ消す削除の inputType。 */
+const DELETE_FORWARD = new Set([
+  "deleteContentForward",
+  "deleteWordForward",
+  "deleteSoftLineForward",
+  "deleteHardLineForward",
+]);
+
+/** 選択範囲を消す削除の inputType。 */
+const DELETE_SELECTION = new Set(["deleteContent", "deleteByCut", "deleteByDrag"]);
 
 /** 本文の不一致を検知したときに、構造を直して再挑戦する回数の上限。 */
 const MISMATCH_RETRY_LIMIT = 3;
@@ -161,6 +181,17 @@ export class Session {
         e.preventDefault();
         splitAtCaret(this.paper);
         this.schedule();
+        return;
+      }
+      // プレビューの削除は自前で処理する（handleDelete を参照）。
+      // ブラウザに任せると、ルビや見出し記号の塊を半端に壊したり、
+      // 段落の結合で要素を複製したりして、読み戻した記法が崩れる。
+      if (
+        this.mode === "preview" &&
+        !this.composing &&
+        (DELETE_BACKWARD.has(t) || DELETE_FORWARD.has(t) || DELETE_SELECTION.has(t))
+      ) {
+        this.handleDelete(e as InputEvent);
       }
     });
 
@@ -535,6 +566,140 @@ export class Session {
     // 段落を作り直したので、送り直して ID を振り直させる
     this.lastSent = null;
     this.schedule();
+  }
+
+  /**
+   * プレビューでの削除。ブラウザの既定の削除は使わない。
+   *
+   * 消し方は「まず注記から」。ルビや傍点の塊に外から削除が触れたら、
+   * 一度目は注記（読み・点・見出し記号）だけを外して文字を残す。
+   * もう一度消すと、ふつうの文字として消えていく。半端に壊れた
+   * 記法が本文に残らないし、消しすぎて本文まで失うこともない。
+   *
+   * 段落の先頭での Backspace（前の段落との結合）と、選択範囲の
+   * 削除は、記法テキストを組み立て直してから段落を作り直す。
+   * ブラウザの結合は塊の要素を複製したり潰したりするため。
+   */
+  private handleDelete(e: InputEvent): void {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!this.paper.contains(range.startContainer)) return;
+
+    if (!range.collapsed) {
+      const paraA = paraOf(this.paper, range.startContainer);
+      const paraB = paraOf(this.paper, range.endContainer);
+      if (!paraA || !paraB) return;
+      // 同じ塊の中だけの選択（ルビの親文字の一部など）は、塊を
+      // 消さずに中の文字だけを消したい。ブラウザに任せる
+      const atomA = findAtom(paraA, range.startContainer);
+      if (atomA && atomA === findAtom(paraB, range.endContainer)) return;
+      e.preventDefault();
+      void this.deleteSelection(paraA, paraB, range);
+      return;
+    }
+
+    // 塊の中にキャレットがある（親文字を打ち直している）ときは
+    // ふつうの文字消し。ブラウザに任せる
+    const para = paraOf(this.paper, range.startContainer);
+    if (!para || findAtom(para, range.startContainer)) return;
+
+    const backward = DELETE_BACKWARD.has(e.inputType);
+    const segs = readSegments(para);
+    const at = srcOffsetAt(para, segs, range.startContainer, range.startOffset, "start");
+    if (at === null) return;
+
+    if (backward && at === 0) {
+      // 段落の先頭。前の段落と繋ぐ
+      const prev = para.previousElementSibling as HTMLElement | null;
+      if (prev) {
+        e.preventDefault();
+        void this.mergeParas(prev, para);
+      }
+      return;
+    }
+    if (!backward && at >= srcLength(segs)) {
+      // 段落の末尾。次の段落を引き込む
+      const next = para.nextElementSibling as HTMLElement | null;
+      if (next) {
+        e.preventDefault();
+        void this.mergeParas(para, next);
+      }
+      return;
+    }
+
+    // 消す方向の隣が塊なら、まず注記を外す
+    const seg = segs.find((s) => s.atom && (backward ? s.end === at : s.start === at));
+    if (seg?.atom) {
+      e.preventDefault();
+      void this.unwrapAtom(para, seg, backward);
+    }
+    // それ以外はふつうの文字消し。ブラウザに任せる
+  }
+
+  /**
+   * 塊の注記だけを外し、表示されている文字を残す。
+   *
+   * ルビは読みが外れて親文字だけに、傍点は点が外れて文字だけになる。
+   * 見出し記号は記号そのものが注記なので、丸ごと消える
+   * （その行は見出しでなくなる）。
+   */
+  private async unwrapAtom(para: HTMLElement, seg: Segment, backward: boolean): Promise<void> {
+    const atom = seg.atom;
+    if (!atom) return;
+    const line = this.lineOf(para);
+    if (seg.end > line.length) return; // data-src が古い。次の同期を待つ
+    const visible = atom.classList.contains("heading-mark") ? "" : (atom.dataset.text ?? "");
+    const next = line.slice(0, seg.start) + visible + line.slice(seg.end);
+    const at = backward ? seg.start + visible.length : seg.start;
+    await this.replaceLine(para, next, at, at);
+    this.events.onEdit?.();
+  }
+
+  /** 二つの段落を、記法テキストの上で繋いで組み直す。 */
+  private async mergeParas(head: HTMLElement, tail: HTMLElement): Promise<void> {
+    const lineA = this.lineOf(head);
+    const lineB = this.lineOf(tail);
+    tail.remove();
+    const at = lineA.length;
+    await this.replaceLine(head, lineA + lineB, at, at);
+    this.events.onEdit?.();
+  }
+
+  /**
+   * 選択範囲を、記法テキストの上で削って組み直す。
+   *
+   * 塊の一部にしか掛かっていない選択は塊の全体まで広がる
+   * （srcOffsetAt の約束）。記法が途中で切れることはない。
+   */
+  private async deleteSelection(
+    paraA: HTMLElement,
+    paraB: HTMLElement,
+    range: Range,
+  ): Promise<void> {
+    const segsA = readSegments(paraA);
+    const from = srcOffsetAt(paraA, segsA, range.startContainer, range.startOffset, "start");
+    const segsB = paraA === paraB ? segsA : readSegments(paraB);
+    const to = srcOffsetAt(paraB, segsB, range.endContainer, range.endOffset, "end");
+    if (from === null || to === null) return;
+
+    const lineA = this.lineOf(paraA);
+    const lineB = paraA === paraB ? lineA : this.lineOf(paraB);
+    if (from > lineA.length || to > lineB.length) return; // data-src が古い
+
+    if (paraA !== paraB) {
+      // あいだの段落は丸ごと消える
+      let n: Element | null = paraA.nextElementSibling;
+      while (n && n !== paraB) {
+        const gone = n;
+        n = n.nextElementSibling;
+        gone.remove();
+      }
+      paraB.remove();
+    }
+    const next = lineA.slice(0, from) + lineB.slice(to);
+    await this.replaceLine(paraA, next, from, from);
+    this.events.onEdit?.();
   }
 
   /**
