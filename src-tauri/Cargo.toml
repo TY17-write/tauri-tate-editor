@@ -14,7 +14,7 @@ edition = "2021"
 name = "tauri_tate_editor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# UniDic を実行ファイルに埋め込むためビルド成果物が非常に大きい
+# 辞書を実行ファイルに埋め込むためビルド成果物が非常に大きい
 # （debug で 9 GB 前後）。増分ビルドの中間ファイルがさらに 2 GB ほど
 # 積み上がり、ディスクが逼迫してビルドが失敗したため切っている。
 # 一度に作り直すぶん多少遅くなるが、容量のほうが問題になりやすい。
@@ -32,7 +32,9 @@ serde_json = "1"
 thunderdome = "0.6.1"
 encoding_rs = "0.8.35"
 once_cell = "1.21.4"
-lindera = { version = "5.3.0", features = ["embed-unidic"] }
+# 辞書は UniDic から SudachiDict に切り替えた。SudachiDict は語ごとに
+# 同義語グループを持つ辞書系列で、のちに類義語検索を載せるための布石。
+lindera = { version = "6.0.0", features = ["embed-sudachidict"] }
 tauri-plugin-dialog = "2"
 regex = "1.13.1"
 

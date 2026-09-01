@@ -1,4 +1,7 @@
-//! 形態素解析。Lindera を常駐させ、段落単位で品詞のマーカー範囲を返す。
+//! 形態素解析。Lindera（辞書は SudachiDict）を常駐させ、段落単位で
+//! 品詞のマーカー範囲を返す。SudachiDict は語ごとに同義語グループ番号
+//! （details 末尾の synonym_group_ids）を持つので、類義語検索を後から
+//! 同じ辞書で実装できる。
 //!
 //! 辞書のロードは重いので `OnceCell` で一度だけ行う。
 //! 返すオフセットは UTF-16 単位。JavaScript の文字列はコード単位が
@@ -16,9 +19,8 @@ use lindera::segmenter::Segmenter;
 
 /// マーカーを引く品詞。
 ///
-/// UniDic では形容動詞が「形状詞」という品詞名で分類される。
-/// IPADIC に切り替えた場合は「名詞,形容動詞語幹」になるため、
-/// 判定は [`PosTag::from_details`] に閉じ込めてある。
+/// SudachiDict（UniDic 系）では形容動詞が「形状詞」という品詞名で
+/// 分類される。判定は [`PosTag::from_details`] に閉じ込めてある。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PosTag {
@@ -35,24 +37,17 @@ pub enum PosTag {
 impl PosTag {
     /// Lindera の details から、マーカー対象の品詞かどうかを判定する。
     ///
-    /// details の並びは辞書によって違うが、先頭が品詞大分類である点は
-    /// UniDic・IPADIC で共通。
+    /// details の並びは辞書スキーマで決まる。SudachiDict では
+    /// `[表示表層, 品詞大分類, 中分類, …]` の順なので、品詞大分類は
+    /// 2 番目（UniDic では先頭だった）。未知語は details が
+    /// `["UNK"]` の 1 要素になり、ここで None に落ちる。
     fn from_details(details: &[&str]) -> Option<Self> {
-        let major = *details.first()?;
+        let major = *details.get(1)?;
         match major {
             "副詞" => Some(PosTag::Adverb),
             "形容詞" => Some(PosTag::Adjective),
             "形状詞" => Some(PosTag::AdjectivalNoun),
             "連体詞" => Some(PosTag::Adnominal),
-            // IPADIC 互換：名詞のうち形容動詞語幹だけを拾う
-            "名詞" => {
-                let sub = details.get(1).copied().unwrap_or("");
-                if sub == "形容動詞語幹" {
-                    Some(PosTag::AdjectivalNoun)
-                } else {
-                    None
-                }
-            }
             _ => None,
         }
     }
@@ -71,7 +66,7 @@ static SEGMENTER: OnceCell<Segmenter> = OnceCell::new();
 /// 辞書を読み込んで Segmenter を用意する。二回目以降は使い回す。
 fn segmenter() -> Result<&'static Segmenter, String> {
     SEGMENTER.get_or_try_init(|| {
-        let dictionary = load_dictionary("embedded://unidic")
+        let dictionary = load_dictionary("embedded://sudachidict")
             .map_err(|e| format!("辞書の読み込みに失敗: {e}"))?;
         Ok(Segmenter::new(Mode::Normal, dictionary, None))
     })
