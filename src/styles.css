@@ -602,6 +602,9 @@ button.toggle.is-on {
 }
 .viewport > .paper {
   margin-left: auto;
+  /* flex の子は既定で縮む。用紙が画面からあふれたときに縮まれて
+     しまうとスクロールの余地ごと消えるので、大きさは固定する */
+  flex: 0 0 auto;
 }
 
 /* 縦書きでは論理軸が入れ替わる。

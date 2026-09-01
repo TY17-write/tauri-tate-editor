@@ -76,6 +76,31 @@ const DELETE_FORWARD = new Set([
 /** 選択範囲を消す削除の inputType。 */
 const DELETE_SELECTION = new Set(["deleteContent", "deleteByCut", "deleteByDrag"]);
 
+/**
+ * プレビューの「元に戻す」1 段分。本文（記法テキスト）と選択位置。
+ *
+ * プレビューの編集は自前で DOM を組み直すことが多く、ブラウザの
+ * undo 履歴には載らない（載っても、組み直す前の古い DOM が甦って
+ * 記法が壊れる）。そこで履歴も自前で持つ。
+ */
+interface Snapshot {
+  text: string;
+  sel: { start: number; end: number } | null;
+}
+
+/** 履歴の上限。1 段は本文の複製なので、増やしすぎない。 */
+const HISTORY_LIMIT = 200;
+
+/** この間隔(ms)以内の打鍵は、ひとまとめに戻す。 */
+const HISTORY_GROUP_MS = 900;
+
+function isHighSurrogate(c: number): boolean {
+  return c >= 0xd800 && c <= 0xdbff;
+}
+function isLowSurrogate(c: number): boolean {
+  return c >= 0xdc00 && c <= 0xdfff;
+}
+
 /** 本文の不一致を検知したときに、構造を直して再挑戦する回数の上限。 */
 const MISMATCH_RETRY_LIMIT = 3;
 
@@ -126,6 +151,11 @@ export class Session {
    * 記法テキスト上の範囲で持っておく。
    */
   private rubySpot: { index: number; start: number; end: number; base: string } | null = null;
+  /** プレビュー用の元に戻す・やり直す履歴。 */
+  private undoStack: Snapshot[] = [];
+  private redoStack: Snapshot[] = [];
+  /** 打鍵の続きをひとまとめにするための、直近に積んだ時刻。 */
+  private lastSnapAt = 0;
   /**
    * その記法でのルビと傍点の書き方。Rust から取る。
    *
@@ -179,19 +209,54 @@ export class Session {
       const t = (e as InputEvent).inputType;
       if (t === "insertParagraph" || t === "insertLineBreak") {
         e.preventDefault();
+        this.pushHistory(); // 改行はひと区切り。束ねずに積む
         splitAtCaret(this.paper);
         this.schedule();
         return;
       }
+      if (this.mode !== "preview" || this.composing) return;
+
+      // プレビューの元に戻すは自前の履歴で行う（Snapshot を参照）。
+      // ブラウザの履歴には自前で組み直した編集が載っていないうえ、
+      // 組み直す前の古い DOM が甦って記法が壊れる。
+      if (t === "historyUndo") {
+        e.preventDefault();
+        void this.undo();
+        return;
+      }
+      if (t === "historyRedo") {
+        e.preventDefault();
+        void this.redo();
+        return;
+      }
+
       // プレビューの削除は自前で処理する（handleDelete を参照）。
       // ブラウザに任せると、ルビや見出し記号の塊を半端に壊したり、
       // 段落の結合で要素を複製したりして、読み戻した記法が崩れる。
-      if (
-        this.mode === "preview" &&
-        !this.composing &&
-        (DELETE_BACKWARD.has(t) || DELETE_FORWARD.has(t) || DELETE_SELECTION.has(t))
-      ) {
+      if (DELETE_BACKWARD.has(t) || DELETE_FORWARD.has(t) || DELETE_SELECTION.has(t)) {
         this.handleDelete(e as InputEvent);
+        return;
+      }
+
+      // ブラウザに任せる入力も、履歴には積んでおく（打鍵は束ねる）
+      if (t.startsWith("insert") && t !== "insertCompositionText") {
+        this.pushHistory(true);
+      }
+    });
+
+    // プレビューでは Ctrl+Z / Ctrl+Y も自前の履歴に向ける。
+    // beforeinput の historyUndo は、ブラウザ側の履歴が空だと
+    // そもそも発火しないので、キーの段階で受ける必要がある。
+    this.paper.addEventListener("keydown", (e) => {
+      if (this.mode !== "preview" || this.composing) return;
+      if (!e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void this.undo();
+      } else if (k === "y" || (k === "z" && e.shiftKey)) {
+        e.preventDefault();
+        void this.redo();
       }
     });
 
@@ -202,6 +267,7 @@ export class Session {
       const text = e.clipboardData?.getData("text/plain");
       if (text === undefined) return;
       e.preventDefault();
+      this.pushHistory(); // 貼り付けはひと区切り
       insertTextAtCaret(this.paper, text);
       this.schedule();
     });
@@ -223,6 +289,7 @@ export class Session {
     // 変換中に触ると実際に入力が壊れる。renderMarks() で弾いている。
     this.paper.addEventListener("compositionstart", () => {
       this.composing = true;
+      this.pushHistory(); // 変換ひとつぶんをまとめて戻せるように
     });
     this.paper.addEventListener("compositionend", () => {
       this.composing = false;
@@ -277,6 +344,7 @@ export class Session {
   async setText(text: string): Promise<void> {
     writeText(this.paper, text);
     this.resetHistory();
+    this.clearHistory();
     this.lastSent = null;
     await this.sync();
   }
@@ -314,6 +382,7 @@ export class Session {
 
     this.mode = mode;
     this.resetHistory();
+    this.clearHistory();
     this.lastSent = null;
     await this.sync();
     await this.refreshMarks();
@@ -325,6 +394,7 @@ export class Session {
     await this.useNotation(notation);
     await this.buildPreview();
     this.resetHistory();
+    this.clearHistory();
     this.lastSent = null;
     await this.sync();
     await this.refreshMarks();
@@ -466,6 +536,7 @@ export class Session {
     const src = rubySource(forms, spot.base, reading.trim());
     const next = line.slice(0, spot.start) + src + line.slice(spot.end);
     this.paper.focus();
+    this.pushHistory();
     await this.replaceLine(para, next, spot.start, spot.start + src.length);
     return {
       message: reading.trim() ? "ルビを振りました" : "ルビを外しました",
@@ -495,6 +566,7 @@ export class Session {
     const edit = await toggleEmphasisAt(spot.line, spot.start, spot.end, this.notation);
     if (!edit) return { message: "ルビを含む範囲には傍点を付けられません", changed: false };
 
+    this.pushHistory();
     await this.replaceLine(spot.para, edit.text, edit.start, edit.end);
     const added = edit.text.length > spot.line.length;
     return { message: added ? "傍点を付けました" : "傍点を外しました", changed: true };
@@ -568,6 +640,74 @@ export class Session {
     this.schedule();
   }
 
+  /* ============================================================
+     プレビューの元に戻す・やり直す
+
+     本文（記法テキスト）と選択位置の複製を自前の山に積む。
+     ブラウザの履歴は使わない。プレビューの編集の多くは段落を
+     自前で組み直すため履歴に載らず、載っている分だけ戻すと
+     組み直す前の古い DOM が甦って記法が壊れる。
+     記法表示は今までどおりブラウザの履歴に任せる。
+     ============================================================ */
+
+  /** いまの状態を 1 段分に写し取る。 */
+  private snapshot(): Snapshot {
+    return { text: this.text(), sel: selectionOffsets(this.paper) };
+  }
+
+  /**
+   * いまの状態を履歴に積む。編集を加える「前」に呼ぶこと。
+   *
+   * `group` を立てると、直前の積みから間を置かずに続いた分は
+   * 積まない（打鍵の束ね）。新しい編集が入ったのでやり直しは捨てる。
+   */
+  private pushHistory(group = false): void {
+    if (this.mode !== "preview") return;
+    const now = Date.now();
+    if (group && now - this.lastSnapAt < HISTORY_GROUP_MS && this.undoStack.length > 0) {
+      this.lastSnapAt = now;
+      return;
+    }
+    this.lastSnapAt = now;
+    this.undoStack.push(this.snapshot());
+    if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
+    this.redoStack.length = 0;
+  }
+
+  /** 履歴を捨てる。本文の差し替えや表示モードの切り替えで呼ぶ。 */
+  private clearHistory(): void {
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
+    this.lastSnapAt = 0;
+  }
+
+  private async undo(): Promise<void> {
+    const snap = this.undoStack.pop();
+    if (!snap) return;
+    this.redoStack.push(this.snapshot());
+    await this.restoreSnapshot(snap);
+  }
+
+  private async redo(): Promise<void> {
+    const snap = this.redoStack.pop();
+    if (!snap) return;
+    this.undoStack.push(this.snapshot());
+    this.lastSnapAt = 0; // 次の打鍵は新しい束として積む
+    await this.restoreSnapshot(snap);
+  }
+
+  /** 1 段分の状態へ戻す。正本（Rust）を戻してから組み直す。 */
+  private async restoreSnapshot(snap: Snapshot): Promise<void> {
+    const views = await invoke<ParaView[]>("set_text", { text: snap.text });
+    this.lastSent = snap.text;
+    await this.buildPreview();
+    this.attachIds(views);
+    if (snap.sel) setSelectionOffsets(this.paper, snap.sel.start, snap.sel.end);
+    await this.refreshMarks();
+    this.events.onEdit?.();
+    this.events.onSynced?.();
+  }
+
   /**
    * プレビューでの削除。ブラウザの既定の削除は使わない。
    *
@@ -599,15 +739,43 @@ export class Session {
       return;
     }
 
-    // 塊の中にキャレットがある（親文字を打ち直している）ときは
-    // ふつうの文字消し。ブラウザに任せる
     const para = paraOf(this.paper, range.startContainer);
-    if (!para || findAtom(para, range.startContainer)) return;
+    if (!para) return;
 
     const backward = DELETE_BACKWARD.has(e.inputType);
     const segs = readSegments(para);
-    const at = srcOffsetAt(para, segs, range.startContainer, range.startOffset, "start");
-    if (at === null) return;
+    let at: number | null;
+
+    // キャレットはクリックや矢印移動で塊の「中の端」に立つことが多い。
+    // そこから外へ向かう削除も、塊への削除として扱わないと、
+    // 注記より先に親文字が消えてしまう。
+    const inAtom = findAtom(para, range.startContainer);
+    if (inAtom) {
+      const seg = segs.find((s) => s.atom === inAtom);
+      if (!seg) return;
+      const edge = this.atomEdge(inAtom, range.startContainer, range.startOffset);
+      if (backward ? edge.atEnd : edge.atStart) {
+        // 端に立って塊の中身へ向かう削除。まず注記を外す
+        e.preventDefault();
+        void this.unwrapAtom(para, seg, backward);
+        return;
+      }
+      if (backward ? edge.atStart : edge.atEnd) {
+        // 端に立って塊の外へ向かう削除。塊のすぐ外と同じに扱う。
+        // ブラウザに任せると、外の文字を塊の中へ引き込むことがある
+        at = backward ? seg.start : seg.end;
+      } else {
+        // 塊の中ほど。親文字のふつうの文字消しなのでブラウザに任せる
+        this.pushHistory(true);
+        return;
+      }
+    } else {
+      at = srcOffsetAt(para, segs, range.startContainer, range.startOffset, "start");
+    }
+    if (at === null) {
+      this.pushHistory(true);
+      return;
+    }
 
     if (backward && at === 0) {
       // 段落の先頭。前の段落と繋ぐ
@@ -633,8 +801,68 @@ export class Session {
     if (seg?.atom) {
       e.preventDefault();
       void this.unwrapAtom(para, seg, backward);
+      return;
+    }
+
+    if (inAtom) {
+      // 塊の端から外の文字への削除。ブラウザに任せると外の文字を
+      // 塊の中へ引き込むことがあるので、自前で 1 文字だけ消す
+      e.preventDefault();
+      void this.deleteCharAt(para, at, backward);
+      return;
     }
     // それ以外はふつうの文字消し。ブラウザに任せる
+    this.pushHistory(true);
+  }
+
+  /**
+   * 塊の中のキャレットが、見えている文字の端に立っているか。
+   *
+   * ルビの読み（rt）は流れの外なので数えない。atStart は手前に
+   * 見える文字がないこと、atEnd は先に見える文字がないこと。
+   */
+  private atomEdge(
+    atom: HTMLElement,
+    node: Node,
+    offset: number,
+  ): { atStart: boolean; atEnd: boolean } {
+    const visibleLen = (r: Range): number => {
+      const frag = r.cloneContents();
+      for (const el of Array.from(frag.querySelectorAll("rt, rp"))) el.remove();
+      return (frag.textContent ?? "").length;
+    };
+    const head = document.createRange();
+    head.setStart(atom, 0);
+    head.setEnd(node, offset);
+    const tail = document.createRange();
+    tail.setStart(node, offset);
+    tail.setEnd(atom, atom.childNodes.length);
+    return { atStart: visibleLen(head) === 0, atEnd: visibleLen(tail) === 0 };
+  }
+
+  /**
+   * 記法テキスト上の位置の隣 1 文字を消して、段落を組み直す。
+   *
+   * サロゲートペアは 2 コード単位まとめて消す。半端に切ると
+   * 壊れた文字が残る。
+   */
+  private async deleteCharAt(para: HTMLElement, at: number, backward: boolean): Promise<void> {
+    const line = this.lineOf(para);
+    if (at > line.length) return; // data-src が古い。次の同期を待つ
+    let s = backward ? at - 1 : at;
+    let e = backward ? at : at + 1;
+    // サロゲートペアの前半・後半で切らない
+    if (backward && s > 0 && isLowSurrogate(line.charCodeAt(s)) && isHighSurrogate(line.charCodeAt(s - 1))) {
+      s -= 1;
+    }
+    if (!backward && e < line.length && isHighSurrogate(line.charCodeAt(e - 1)) && isLowSurrogate(line.charCodeAt(e))) {
+      e += 1;
+    }
+    if (s < 0 || e > line.length || s >= e) return;
+    this.pushHistory();
+    const next = line.slice(0, s) + line.slice(e);
+    await this.replaceLine(para, next, s, s);
+    this.events.onEdit?.();
   }
 
   /**
@@ -652,6 +880,7 @@ export class Session {
     const visible = atom.classList.contains("heading-mark") ? "" : (atom.dataset.text ?? "");
     const next = line.slice(0, seg.start) + visible + line.slice(seg.end);
     const at = backward ? seg.start + visible.length : seg.start;
+    this.pushHistory();
     await this.replaceLine(para, next, at, at);
     this.events.onEdit?.();
   }
@@ -660,6 +889,7 @@ export class Session {
   private async mergeParas(head: HTMLElement, tail: HTMLElement): Promise<void> {
     const lineA = this.lineOf(head);
     const lineB = this.lineOf(tail);
+    this.pushHistory();
     tail.remove();
     const at = lineA.length;
     await this.replaceLine(head, lineA + lineB, at, at);
@@ -687,6 +917,7 @@ export class Session {
     const lineB = paraA === paraB ? lineA : this.lineOf(paraB);
     if (from > lineA.length || to > lineB.length) return; // data-src が古い
 
+    this.pushHistory();
     if (paraA !== paraB) {
       // あいだの段落は丸ごと消える
       let n: Element | null = paraA.nextElementSibling;
