@@ -192,6 +192,16 @@ body {
   grid-template-rows: auto auto 1fr auto;
   height: 100%;
 }
+/* 行は明示的に割り当てる。検索バーは隠すと display: none で
+   グリッドから抜けるため、自動配置に任せると後続が一行ずつ
+   繰り上がり、本文が auto 行・ステータスバーが 1fr 行に入って
+   「本文が画面いっぱいに広がらず、下に大きな空きができる」
+   （実害があった。本文の高さが中身なりになるため、ウィンドウを
+   広げても文字サイズの自動計算が働かなかった） */
+.app > .toolbar { grid-row: 1; }
+.app > .findbar { grid-row: 2; }
+.app > .workspace { grid-row: 3; }
+.app > .statusbar { grid-row: 4; }
 
 /* 目次と用紙を横に並べる */
 .workspace {

@@ -223,11 +223,25 @@ function fitCellToViewport(): void {
   const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
   const border = 2; // 用紙の枠線
   const usable = viewport.clientHeight - pad - border;
-  const cell = Math.floor(usable / layout.chars);
-  const clamped = Math.max(CELL_LIMITS[0], Math.min(CELL_LIMITS[1], cell));
-  const step = Math.round(clamped * STEP_RATIO);
-  if (clamped === layout.cell && step === layout.step) return;
-  layout.cell = clamped;
+
+  // 端末画素の刻み。Windows の拡大率が 125% などのとき、CSS px の
+  // 整数でも端末画素では半端になり、マス目の線の間隔が揺れて歪んで
+  // 見える。字送りも行間もこの刻みに乗せる
+  const q = 1 / (window.devicePixelRatio || 1);
+  const snap = (v: number) => Math.round(v / q) * q;
+
+  let cell = Math.floor(usable / layout.chars / q) * q;
+  cell = Math.max(CELL_LIMITS[0], Math.min(CELL_LIMITS[1], cell));
+
+  // 行間（字の箱の脇の空き、片側）。round(cell × 1.7) のような
+  // 決め方だと行間が 5.5px など半端になり、マス目の 3 層の
+  // グラデーションの境界が半画素ずつずれて歪む。行間そのものを
+  // 刻みに乗せ、行送りは「字送り + 行間 × 2」で組み立てる
+  const gutter = Math.max(snap(2), snap((cell * (STEP_RATIO - 1)) / 2));
+  const step = cell + 2 * gutter;
+
+  if (cell === layout.cell && step === layout.step) return;
+  layout.cell = cell;
   layout.step = step;
   applyLayout(layout);
 }
