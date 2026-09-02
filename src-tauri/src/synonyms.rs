@@ -106,7 +106,7 @@ fn wordnet() -> &'static WordNet {
         let mut ids: HashMap<&str, u32> = HashMap::new();
         let mut members: Vec<Vec<String>> = Vec::new();
         let mut by_word: HashMap<String, Vec<u32>> = HashMap::new();
-        let mut intern =
+        let intern =
             |ids: &mut HashMap<&str, u32>, members: &mut Vec<Vec<String>>, synset: &'static str| {
                 *ids.entry(synset).or_insert_with(|| {
                     members.push(Vec::new());
@@ -220,7 +220,7 @@ pub fn lookup(line: &str, start: u32, end: u32) -> Result<Option<SynonymHit>, St
     // 一度出した語は他の段に重ねて出さない
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     seen.insert(word.clone());
-    let mut take =
+    let take =
         |seen: &mut std::collections::HashSet<String>, src: &[String], cap: usize| -> Vec<String> {
             let mut out = Vec::new();
             for w in src {
@@ -275,7 +275,7 @@ pub fn lookup(line: &str, start: u32, end: u32) -> Result<Option<SynonymHit>, St
     // 3) 概念のつながりをたどった語 = 近い意味。
     //    上位（おおまかな語）・下位（細かな語）・類似をひとまとめに
     let mut near: Vec<String> = Vec::new();
-    let mut push_members = |near: &mut Vec<String>, id: u32| {
+    let push_members = |near: &mut Vec<String>, id: u32| {
         for w in &wn.members[id as usize] {
             if !near.iter().any(|x| x == w) {
                 near.push(w.clone());
