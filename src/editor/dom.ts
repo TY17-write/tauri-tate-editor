@@ -178,9 +178,12 @@ function isCleanChild(n: Node): boolean {
     // DOM と段落数が食い違う。
     return !NEWLINE.test(n.nodeValue ?? "");
   }
-  if (n.nodeType !== Node.ELEMENT_NODE || (n as Element).tagName !== "SPAN") return false;
-  const cls = (n as Element).classList;
-  return cls.contains("sidemark") || cls.contains("hang");
+  if (n.nodeType !== Node.ELEMENT_NODE) return false;
+  const el = n as Element;
+  // 印刷中だけ、マス目の SVG が段落に差し込まれる（main.ts）
+  if (el.tagName.toLowerCase() === "svg" && el.classList.contains("printgrid")) return true;
+  if (el.tagName !== "SPAN") return false;
+  return el.classList.contains("sidemark") || el.classList.contains("hang");
 }
 
 /** 改行の表記ゆれ。ペーストや読み込みで CRLF や CR が入ることがある。 */

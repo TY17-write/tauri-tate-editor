@@ -18,7 +18,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tp-check</title>
     <script>
-      // 検証用: ?chars=40&lines=16 のように判型を差し込める
+      // 検証用: ?chars=40&lines=16 のように判型を差し込める。
+      // ?bulk=20 でサンプル本文を 20 倍に増やす（長文の印刷検証用）
+      (() => {
+        const q = new URLSearchParams(location.search);
+        const bulk = Number(q.get("bulk") ?? 0);
+        if (bulk > 1) {
+          window.addEventListener("load", () => {
+            setTimeout(() => {
+              const paper = document.getElementById("paper");
+              const text = Array.from(paper.children).map((p) => p.textContent).join("\n");
+              const extra = Array(bulk - 1).fill(text).join("\n");
+              const sel = getSelection();
+              const r = document.createRange();
+              r.selectNodeContents(paper.lastElementChild);
+              r.collapse(false);
+              sel.removeAllRanges(); sel.addRange(r);
+              const dt = new DataTransfer();
+              dt.setData("text/plain", "\n" + extra);
+              paper.focus();
+              paper.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+            }, 1200);
+          });
+        }
+      })();
+    </script>
+    <script>
       (() => {
         const q = new URLSearchParams(location.search);
         if (q.has("chars")) {

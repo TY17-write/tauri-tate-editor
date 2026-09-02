@@ -400,61 +400,65 @@ btnMarker.addEventListener("click", () => {
 });
 
 /* ---------- 印刷用のマス目の下敷き ----------
-   印刷でマス目を CSS の背景に任せてはいけない。実測で二つ壊れた。
+   印刷でマス目を CSS の背景に任せてはいけない。実測で順に壊れた。
      ・ページに分割された要素の背景は、位相も周期も崩れて描かれる
-     ・分割を避けて下敷き要素にしても、repeating-linear-gradient や
-       SVG タイルの「敷き詰め」が周期 2 倍に化ける（字数が多く
-       升が小さいときに顕著）
-   背景の絵はどれも信用できないので、罫線は**インライン SVG の
-   path**（ふつうの DOM 描画）で引く。これはベクタのまま PDF に
-   乗り、どの大きさでも崩れない。
+     ・分割を避けてページごとの下敷き要素にしても、グラデーションや
+       SVG タイルの「敷き詰め」が周期 2 倍に化ける
+     ・下敷きをページ 1 枚ぶんの mm 寸法で並べても、実際のページの
+       行数や行送りがエンジンの丸めでわずかに違い、本文が長くなる
+       ほどマス目が滑っていく
+   そこで罫線は**段落ごとのインライン SVG** で引く。SVG は段落の箱
+   いっぱいに伸ばす（viewBox は行数×字数に比例）ので、段落の物理
+   寸法——つまり本文そのものの行送り・字送り——にそのまま貼り付き、
+   エンジン側の丸めや改ページがどうであっても本文と升がずれない。
+   ベクタのまま PDF に乗るので大きさによる崩れもない。
 
-   印刷前に、ページ 1 枚ぶんの下敷き（.printgrid + svg）をページ数
-   だけ .paperwrap に並べ、印刷後に片付ける。数値は print.css の
-   @page と揃えること（A4 横・余白 15mm）。折り返しは画面と印刷で
-   同じ（1 行の字数が同じ）なので、画面の行数からページ数が分かる。 */
-const paperwrap = $<HTMLElement>("paperwrap");
+   印刷前に各段落へ差し込み、印刷後に片付ける。段落の行数は画面で
+   測る（1 行の字数が同じなので、折り返しは画面と印刷で一致する）。 */
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** 1 ページぶんのマス目を SVG で組む。単位はすべて mm。 */
-function gridSvg(
-  mode: "grid-full" | "grid-rules",
-  perPage: number,
-  stepMM: number,
-  cellMM: number,
-): SVGSVGElement {
+/**
+ * 段落 1 つぶんのマス目 SVG。
+ *
+ * 座標系は「字送り = 1」の単位で組む。行送りは比（step/cell）で
+ * 効かせ、実寸は段落の箱に合わせた引き伸ばしで決まる。
+ */
+function paraGridSvg(mode: "grid-full" | "grid-rules", lines: number): SVGSVGElement {
   const chars = layout.chars;
-  const gutter = (stepMM - cellMM) / 2;
-  const w = perPage * stepMM;
-  const h = chars * cellMM;
+  const S = layout.step / layout.cell; // 行送り（字送り単位）
+  const g = (S - 1) / 2; // 行間（片側）
+  const w = lines * S;
+  const h = chars;
   const d: string[] = [];
-  const f = (v: number) => v.toFixed(3);
+  const f = (v: number) => v.toFixed(4);
 
-  for (let j = 0; j < perPage; j++) {
+  for (let j = 0; j < lines; j++) {
     if (mode === "grid-rules") {
-      // 行罫: 行の帯の境目に 1 本
-      const x = w - j * stepMM;
+      const x = w - j * S;
       d.push(`M${f(x)} 0V${f(h)}`);
       continue;
     }
-    // 升目: 字の箱の左右の縦線と、箱の中だけの横線
-    const xr = w - j * stepMM - gutter;
-    const xl = w - (j + 1) * stepMM + gutter;
+    // 字の箱の左右の縦線と、箱の中だけの横線
+    const xr = w - j * S - g;
+    const xl = w - (j + 1) * S + g;
     d.push(`M${f(xl)} 0V${f(h)}`, `M${f(xr)} 0V${f(h)}`);
     for (let i = 0; i <= chars; i++) {
-      d.push(`M${f(xl)} ${f(i * cellMM)}H${f(xr)}`);
+      d.push(`M${f(xl)} ${f(i)}H${f(xr)}`);
     }
   }
 
   const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "printgrid");
   svg.setAttribute("viewBox", `0 0 ${f(w)} ${f(h)}`);
   svg.setAttribute("preserveAspectRatio", "none");
-  svg.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%");
+  svg.setAttribute("aria-hidden", "true");
   const path = document.createElementNS(SVG_NS, "path");
   path.setAttribute("d", d.join(""));
   path.setAttribute("fill", "none");
-  // 色は印刷用の罫線色（print.css の --rule）を継ぐ
-  path.setAttribute("style", "stroke: var(--rule); stroke-width: 0.25");
+  // 1 単位 = 1 字送り。0.25mm 相当の線の太さを単位に直す。
+  // 字送りの実寸は (210mm - 15mm×2) / 字数（print.css と揃える）
+  const cellMM = (210 - 15 * 2) / chars;
+  path.setAttribute("style", `stroke: var(--rule); stroke-width: ${(0.25 / cellMM).toFixed(4)}`);
   svg.appendChild(path);
   return svg;
 }
@@ -464,34 +468,22 @@ function buildPrintGrids(): void {
   const mode = gridSel.value;
   if (mode !== "grid-full" && mode !== "grid-rules") return;
 
-  const PAGE_W = 297; // A4 横の幅(mm) = ページ送りの方向
-  const PAGE_H = 210; // A4 横の高さ(mm) = 行の方向
-  const MARGIN = 15;
-  const cellMM = (PAGE_H - MARGIN * 2) / layout.chars;
-  const stepMM = cellMM * (layout.step / layout.cell);
-  const perPage = Math.floor((PAGE_W - MARGIN * 2) / stepMM);
-  if (perPage < 1) return;
-
-  const border = 2; // 画面の用紙の枠線ぶん
-  const width = paper.getBoundingClientRect().width - border;
-  const totalLines = Math.max(1, Math.round(width / layout.step));
-  const pages = Math.max(1, Math.ceil(totalLines / perPage));
-
-  const svg = gridSvg(mode, perPage, stepMM, cellMM);
-  const frag = document.createDocumentFragment();
-  for (let k = 0; k < pages; k++) {
-    const d = document.createElement("div");
-    d.className = "printgrid";
-    d.style.insetBlockStart = `${k * perPage * stepMM}mm`;
-    d.style.blockSize = `${perPage * stepMM}mm`;
-    d.appendChild(svg.cloneNode(true));
-    frag.appendChild(d);
+  // 行数の同じ段落は SVG を使い回す（長編では大半が同じ行数）
+  const cache = new Map<number, SVGSVGElement>();
+  for (const p of Array.from(paper.children) as HTMLElement[]) {
+    if (p.tagName !== "P") continue;
+    const lines = Math.max(1, Math.round(p.getBoundingClientRect().width / layout.step));
+    let svg = cache.get(lines);
+    if (!svg) {
+      svg = paraGridSvg(mode, lines);
+      cache.set(lines, svg);
+    }
+    p.appendChild(svg.cloneNode(true));
   }
-  paperwrap.appendChild(frag);
 }
 
 function clearPrintGrids(): void {
-  for (const el of Array.from(paperwrap.querySelectorAll(".printgrid"))) el.remove();
+  for (const el of Array.from(paper.querySelectorAll("svg.printgrid"))) el.remove();
 }
 
 window.addEventListener("beforeprint", buildPrintGrids);
