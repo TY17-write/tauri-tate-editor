@@ -33,13 +33,17 @@ import type { Issue, IssueKind, StyleOptions, StyleReport } from "./editor/style
 import { VerticalScroller } from "./editor/scroll";
 import {
   CELL_LIMITS,
+  CURATED_FAMILIES,
+  DEFAULT_LAYOUT,
   FONTS,
   PRESETS,
   STEP_RATIO,
   applyLayout,
   charsPerPage,
   countNormalizable,
+  fontStack,
   isGridSafeFont,
+  listInstalledFonts,
   normalizeText,
 } from "./editor/grid";
 import {
@@ -140,15 +144,57 @@ function scheduleSave(): void {
   }, 300);
 }
 
-/* ---------- 書体の選択肢 ---------- */
+/* ---------- 書体の選択肢 ----------
+   まず標準の書体（升に乗ることを確かめてある顔ぶれ）を並べ、
+   インストール済みの書体は Rust から取れてから後ろに足す。 */
 const fontSel = $<HTMLSelectElement>("font");
-for (const f of FONTS) {
-  const o = document.createElement("option");
-  o.value = f.value;
-  o.textContent = f.label;
-  fontSel.appendChild(o);
+{
+  const g = document.createElement("optgroup");
+  g.label = "標準";
+  for (const f of FONTS) {
+    const o = document.createElement("option");
+    o.value = f.value;
+    o.textContent = f.label;
+    g.appendChild(o);
+  }
+  fontSel.appendChild(g);
 }
 fontSel.value = layout.font;
+
+/**
+ * インストール済みの書体を選択肢に足す。
+ *
+ * Rust が日本語のグリフを持つ書体だけに絞って返す。標準の欄と同じ
+ * ファミリーは重ねて出さない。覚えていた書体がどこにも無ければ
+ * （アンインストールされた、値の形式が変わった）既定に戻す。
+ */
+async function loadInstalledFonts(): Promise<void> {
+  try {
+    const fonts = await listInstalledFonts();
+    const byJa = new Intl.Collator("ja");
+    const extra = fonts
+      .filter((f) => !CURATED_FAMILIES.has(f.name))
+      .sort((a, b) => byJa.compare(a.label, b.label));
+    if (extra.length > 0) {
+      const g = document.createElement("optgroup");
+      g.label = "インストール済み";
+      for (const f of extra) {
+        const o = document.createElement("option");
+        o.value = fontStack(f.name);
+        o.textContent = f.label;
+        g.appendChild(o);
+      }
+      fontSel.appendChild(g);
+    }
+  } catch {
+    /* 一覧が取れなくても標準の書体だけで動く */
+  }
+  if (!Array.from(fontSel.options).some((o) => o.value === layout.font)) {
+    layout.font = DEFAULT_LAYOUT.font;
+    refreshLayout();
+  }
+  fontSel.value = layout.font;
+}
 
 /* ---------- セッション ---------- */
 const session = new Session(paper, {
@@ -204,7 +250,7 @@ function updateStatus(): void {
 function checkFontWarning(): void {
   const gridOn = paper.classList.contains("grid-full") || paper.classList.contains("grid-rules");
   if (gridOn && !isGridSafeFont(layout.font)) {
-    statusMsg.textContent = "この書体は約物が詰まるため、升目とは揃いません";
+    statusMsg.textContent = "この書体は字幅が揃わないため、升目からずれます";
     statusMsg.classList.add("err");
   } else if (statusMsg.classList.contains("err")) {
     // 自分が出した警告だけを消す
@@ -1200,6 +1246,7 @@ applyGrid(settings.grid);
 
 applyLayout(layout);
 fitCellToViewport();
+void loadInstalledFonts();
 void currentPath().then(setStatusFile).catch(() => setStatusFile(null));
 if (!MarkerLayer.supported) {
   statusMsg.textContent = "CSS Custom Highlight API が使えないため、マーカーは表示されません";

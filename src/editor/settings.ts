@@ -12,7 +12,7 @@
  * なるのがいちばん困る。
  */
 
-import { DEFAULT_LAYOUT, FONTS, PRESETS } from "./grid";
+import { DEFAULT_LAYOUT, PRESETS } from "./grid";
 import { ALL_POS } from "./types";
 import type { Layout, MarkStyle, PosTag } from "./types";
 
@@ -105,8 +105,11 @@ function clean(raw: unknown): Settings {
       lines: num(layout.lines, DEFAULT_LAYOUT.lines, LIMITS.lines),
       cell: num(layout.cell, DEFAULT_LAYOUT.cell, LIMITS.cell),
       step: num(layout.step, DEFAULT_LAYOUT.step, LIMITS.step),
-      // 手元にない書体を覚えていても、表にないものは使わない
-      font: FONTS.some((f) => f.value === o0(layout.font)) ? String(layout.font) : DEFAULT_LAYOUT.font,
+      // 書体はインストール済みの一覧から選ぶので、ここでは表と
+      // 突き合わせない（一覧は起動後に Rust から届く）。文字列として
+      // まともかだけを見て、実在の確認は main.ts の
+      // loadInstalledFonts が選択肢と突き合わせて行う
+      font: fontText(layout.font),
     },
     preset: preset(o.preset),
     grid: pick(o.grid, GRID_MODES, DEFAULT_SETTINGS.grid),
@@ -124,6 +127,13 @@ function clean(raw: unknown): Settings {
 
 function o0(v: unknown): string {
   return typeof v === "string" ? v : "";
+}
+
+/** 書体の値として通せる文字列か。長すぎたり空だったりしたら既定へ。 */
+function fontText(v: unknown): string {
+  const s = o0(v).trim();
+  if (s.length === 0 || s.length > 300) return DEFAULT_LAYOUT.font;
+  return s;
 }
 
 function num(v: unknown, fallback: number, [min, max]: readonly [number, number]): number {

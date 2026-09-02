@@ -1,6 +1,7 @@
 mod analyzer;
 mod backup;
 mod document;
+mod fonts;
 mod io;
 mod notation;
 mod stats;
@@ -170,6 +171,15 @@ fn toggle_emphasis(
     notation::toggle_emphasis(&line, start, end, notation_kind)
 }
 
+/// 日本語の書けるインストール済みフォントの一覧。
+///
+/// 初回は全フォントの cmap を引くので少し時間がかかる。同期コマンドは
+/// ワーカースレッドで走るため UI は止まらず、二回目からは即返る。
+#[tauri::command]
+fn list_fonts() -> Vec<fonts::FontEntry> {
+    fonts::list().to_vec()
+}
+
 /// ファイルを読み込み、本文として取り込む。
 ///
 /// 文字コードは推定する（青空文庫の原稿など Shift_JIS のことがある）。
@@ -297,6 +307,7 @@ pub fn run() {
             notation_forms,
             line_pieces,
             toggle_emphasis,
+            list_fonts,
             open_file,
             save_file,
             autosave,
