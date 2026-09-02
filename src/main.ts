@@ -264,7 +264,20 @@ function checkFontWarning(): void {
    1行がちょうど画面の高さに収まるようにする。実際の文庫本も、
    1行が長い分だけ文字が小さい。行送りは字送りの STEP_RATIO 倍。
    ルビと傍点の場所（行間）はこの比で確保される（grid.ts を参照）。 */
+/**
+ * 印刷中は組版の自動計算を凍結する。
+ *
+ * 印刷（ダイアログのプレビューを含む）では画面が印刷レイアウトに
+ * なり、ResizeObserver 経由で fitCellToViewport が走って字送りと
+ * 行送り比が印刷ビューポート基準に書き換わってしまう。すると
+ * beforeprint 時点の比で組んだマス目 SVG と本文の行送りが食い違い、
+ * 升が狭くなって文字が升からはみ出す。値を凍結すれば、SVG と
+ * 本文は同じ比のまま刷られる。
+ */
+let printing = false;
+
 function fitCellToViewport(): void {
+  if (printing) return;
   const style = getComputedStyle(viewport);
   const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
   const border = 2; // 用紙の枠線
@@ -486,8 +499,16 @@ function clearPrintGrids(): void {
   for (const el of Array.from(paper.querySelectorAll("svg.printgrid"))) el.remove();
 }
 
-window.addEventListener("beforeprint", buildPrintGrids);
-window.addEventListener("afterprint", clearPrintGrids);
+window.addEventListener("beforeprint", () => {
+  printing = true;
+  buildPrintGrids();
+});
+window.addEventListener("afterprint", () => {
+  printing = false;
+  clearPrintGrids();
+  // 凍結中に画面の大きさが変わっていたかもしれないので測り直す
+  fitCellToViewport();
+});
 
 /* ---------- 印刷 ---------- */
 
