@@ -5,6 +5,7 @@ mod fonts;
 mod io;
 mod notation;
 mod stats;
+mod synonyms;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -171,6 +172,16 @@ fn toggle_emphasis(
     notation::toggle_emphasis(&line, start, end, notation_kind)
 }
 
+/// 行の中の位置（UTF-16）から類義語を引く。
+///
+/// `start == end` ならキャレット位置の語を分かち書きで探す。
+/// SudachiDict の同義語グループ番号と、同義語辞書の見出し一致の
+/// 両方で引く。見つからなければ null。
+#[tauri::command]
+fn synonyms_at(line: String, start: u32, end: u32) -> Result<Option<synonyms::SynonymHit>, String> {
+    synonyms::lookup(&line, start, end)
+}
+
 /// 日本語の書けるインストール済みフォントの一覧。
 ///
 /// 初回は全フォントの cmap を引くので少し時間がかかる。同期コマンドは
@@ -307,6 +318,7 @@ pub fn run() {
             notation_forms,
             line_pieces,
             toggle_emphasis,
+            synonyms_at,
             list_fonts,
             open_file,
             save_file,

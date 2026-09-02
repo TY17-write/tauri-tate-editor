@@ -121,6 +121,17 @@ export interface RubyTarget {
   rect: DOMRect | null;
 }
 
+/** 類義語の検索結果。Rust の `SynonymHit` と対応する。 */
+export interface SynonymHit {
+  /** 引いた語 */
+  word: string;
+  /** 語が行のどこにあるか（記法テキストの UTF-16） */
+  start: number;
+  end: number;
+  /** 同義語グループごとの語の一覧 */
+  groups: string[][];
+}
+
 export interface SessionEvents {
   onStatus?: (msg: string, isError?: boolean) => void;
   onSynced?: () => void;
@@ -152,6 +163,8 @@ export class Session {
    * 記法テキスト上の範囲で持っておく。
    */
   private rubySpot: { index: number; start: number; end: number; base: string } | null = null;
+  /** 類義語で置き換える語の場所。小窓が開いているあいだ覚えておく */
+  private synSpot: { index: number; start: number; end: number; word: string } | null = null;
   /** プレビュー用の元に戻す・やり直す履歴。 */
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
@@ -608,6 +621,80 @@ export class Session {
   /** ルビの小窓を閉じただけのときに呼ぶ。 */
   cancelRuby(): void {
     this.rubySpot = null;
+  }
+
+  /**
+   * キャレット位置（または選択範囲）の語の類義語を引く。
+   *
+   * 語の場所は覚えておき、`applySynonym` で置き換えられるようにする。
+   * どの語を引くかは Rust が決める（キャレットなら分かち書きで
+   * その位置の語を探す）。
+   */
+  async lookupSynonyms(): Promise<{
+    hit: SynonymHit | null;
+    message: string;
+    rect: DOMRect | null;
+  }> {
+    const none = (message: string) => ({ hit: null, message, rect: null });
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return none("本文の語の上で使います");
+    const range = sel.getRangeAt(0);
+    if (!this.paper.contains(range.startContainer)) return none("本文の語の上で使います");
+
+    const para = paraOf(this.paper, range.startContainer);
+    if (!para || para !== paraOf(this.paper, range.endContainer)) {
+      return none("段落をまたいでいます");
+    }
+    const segs = readSegments(para);
+    const from = srcOffsetAt(para, segs, range.startContainer, range.startOffset, "start");
+    const to = srcOffsetAt(para, segs, range.endContainer, range.endOffset, "end");
+    if (from === null || to === null) return none("本文の語の上で使います");
+
+    const line = this.lineOf(para);
+    const hit = await invoke<SynonymHit | null>("synonyms_at", {
+      line,
+      start: from,
+      end: to,
+    });
+    if (!hit) return none("類義語が見つかりません");
+    // ルビや傍点の中の語は、置き換えると記法が壊れるので受けない
+    if (!plainOnly(segs, hit.start, hit.end)) {
+      return none("ルビや傍点の掛かった語は置き換えられません");
+    }
+
+    this.synSpot = {
+      index: Array.from(this.paper.children).indexOf(para),
+      start: hit.start,
+      end: hit.end,
+      word: hit.word,
+    };
+    return { hit, message: "", rect: range.getBoundingClientRect() };
+  }
+
+  /** 覚えた語を類義語で置き換える。 */
+  async applySynonym(word: string): Promise<CommandResult> {
+    const spot = this.synSpot;
+    this.synSpot = null;
+    if (!spot) return { message: "置き換える場所が分かりません", changed: false };
+
+    const para = this.paper.children[spot.index] as HTMLElement | undefined;
+    if (!para) return { message: "置き換える場所が分かりません", changed: false };
+
+    const line = this.lineOf(para);
+    if (spot.end > line.length || line.slice(spot.start, spot.end) !== spot.word) {
+      return { message: "本文が変わりました。引き直してください", changed: false };
+    }
+
+    const next = line.slice(0, spot.start) + word + line.slice(spot.end);
+    this.paper.focus();
+    this.pushHistory();
+    await this.replaceLine(para, next, spot.start, spot.start + word.length);
+    return { message: `「${spot.word}」を「${word}」に置き換えました`, changed: true };
+  }
+
+  /** 類義語の小窓を閉じただけのときに呼ぶ。 */
+  cancelSynonym(): void {
+    this.synSpot = null;
   }
 
   /**

@@ -63,6 +63,14 @@
           line_pieces: ({ line }) => pieces(line),
           toggle_emphasis: () => null,
           current_path: () => null,
+          synonyms_at: ({ line, start, end }) => {
+            // まね: 「静か」を含む行ならその語で引けたことにする
+            const at = line.indexOf("静か");
+            if (at < 0) return null;
+            if (end < at || start > at + 2) return null;
+            return { word: "静か", start: at, end: at + 2,
+              groups: [["物静か", "閑静", "静粛"], ["穏やか", "安らか"]] };
+          },
           list_fonts: () => [
             { name: "Meiryo", label: "メイリオ" },
             { name: "BIZ UDPMincho", label: "BIZ UDP明朝" },
@@ -70,10 +78,16 @@
             { name: "UD Digi Kyokasho N", label: "UD デジタル 教科書体 N" },
             { name: "Noto Sans JP", label: "Noto Sans JP" },
           ],
+          // 実物と同じ snake_case で返す（style.ts が写し替える）
           style_report: () => ({
-            chars: 0, sentences: 0, avgSentence: 0, maxSentence: 0,
-            dialogueRatio: 0, pos: { adverb: 0, adjective: 0, adjectivalNoun: 0, adnominal: 0 },
-            issues: [],
+            chars: docText.length, sentences: 3, avg_sentence: 20, max_sentence: 40,
+            dialogue_ratio: 0.2,
+            pos: { adverb: 1, adjective: 1, adjectival_noun: 0, adnominal: 0 },
+            issues: [
+              { kind: "orthography", para: 5, start: 0, end: 3,
+                message: "表記が揺れています: 「子供」2 回 / 「子ども」1 回",
+                excerpt: "子ども" },
+            ],
           }),
         };
         window.__TAURI_INTERNALS__ = {
@@ -219,6 +233,12 @@
         <label for="rubyReading">読み</label>
         <input id="rubyReading" type="text" />
         <span class="rubybox-hint">Enter 確定 / Esc 取消</span>
+      </div>
+
+      <div id="synBox" class="synbox" hidden>
+        <div class="synbox-head">「<span id="synWord"></span>」の類義語</div>
+        <div class="synbox-list" id="synList"></div>
+        <span class="rubybox-hint">クリックで置き換え / Esc 閉じる</span>
       </div>
 
       <footer class="statusbar">

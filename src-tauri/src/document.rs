@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use thunderdome::{Arena, Index};
 
-use crate::analyzer::{self, Mark};
+use crate::analyzer::{self, Analysis, Mark};
 use crate::stats::{self, ParaInput, StyleOptions, StyleReport};
 
 /// 段落の識別子を JSON に載せるための形。
@@ -50,7 +50,7 @@ impl ParaId {
 pub struct Paragraph {
     pub text: String,
     /// 直近の解析結果。本文を書き換えた時点で捨てる。
-    pub marks: Option<Vec<Mark>>,
+    pub analysis: Option<Analysis>,
 }
 
 /// 本文全体。
@@ -104,7 +104,7 @@ impl Document {
             }
             let idx = self.paras.insert(Paragraph {
                 text: (*line).to_string(),
-                marks: None,
+                analysis: None,
             });
             new_order.push(idx);
             kept.insert(idx);
@@ -153,7 +153,7 @@ impl Document {
         match self.paras.get_mut(idx) {
             Some(p) => {
                 p.text = text;
-                p.marks = None;
+                p.analysis = None;
                 true
             }
             None => false,
@@ -170,7 +170,7 @@ impl Document {
             .order
             .iter()
             .copied()
-            .filter(|&i| self.paras.get(i).is_some_and(|p| p.marks.is_none()))
+            .filter(|&i| self.paras.get(i).is_some_and(|p| p.analysis.is_none()))
             .collect();
 
         let mut out = Vec::with_capacity(targets.len());
@@ -178,9 +178,10 @@ impl Document {
             let Some(p) = self.paras.get(idx) else {
                 continue;
             };
-            let marks = analyzer::analyze_text(&p.text)?;
+            let a = analyzer::analyze_text(&p.text)?;
+            let marks = a.marks.clone();
             if let Some(p) = self.paras.get_mut(idx) {
-                p.marks = Some(marks.clone());
+                p.analysis = Some(a);
             }
             out.push(AnalyzeResult {
                 id: idx.into(),
@@ -205,14 +206,15 @@ impl Document {
             let Some(p) = self.paras.get(idx) else {
                 continue;
             };
-            let marks = match &p.marks {
-                Some(m) => m.clone(),
+            let marks = match &p.analysis {
+                Some(a) => a.marks.clone(),
                 None => {
-                    let m = analyzer::analyze_text(&p.text)?;
+                    let a = analyzer::analyze_text(&p.text)?;
+                    let marks = a.marks.clone();
                     if let Some(p) = self.paras.get_mut(idx) {
-                        p.marks = Some(m.clone());
+                        p.analysis = Some(a);
                     }
-                    m
+                    marks
                 }
             };
             out.push(AnalyzeResult {
@@ -230,14 +232,18 @@ impl Document {
     pub fn style_report(&mut self, opts: &StyleOptions) -> Result<StyleReport, String> {
         self.analyze_pending()?;
 
-        let empty: Vec<Mark> = Vec::new();
+        let empty = Analysis::default();
         let paras: Vec<ParaInput<'_>> = self
             .order
             .iter()
             .filter_map(|&i| self.paras.get(i))
-            .map(|p| ParaInput {
-                text: &p.text,
-                marks: p.marks.as_ref().unwrap_or(&empty),
+            .map(|p| {
+                let a = p.analysis.as_ref().unwrap_or(&empty);
+                ParaInput {
+                    text: &p.text,
+                    marks: &a.marks,
+                    words: &a.words,
+                }
             })
             .collect();
 
@@ -294,10 +300,10 @@ mod tests {
         let id = v[0].id;
         d.analyze(&[id]).unwrap();
         let idx = id.to_index().unwrap();
-        assert!(d.paras.get(idx).unwrap().marks.is_some());
+        assert!(d.paras.get(idx).unwrap().analysis.is_some());
 
         d.update(id, "書き換えた".into());
-        assert!(d.paras.get(idx).unwrap().marks.is_none());
+        assert!(d.paras.get(idx).unwrap().analysis.is_none());
     }
 
     #[test]

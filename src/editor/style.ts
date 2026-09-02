@@ -7,7 +7,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type IssueKind = "longsentence" | "repeatedending" | "nearbyrepeat" | "overuse";
+export type IssueKind =
+  | "longsentence"
+  | "repeatedending"
+  | "nearbyrepeat"
+  | "overuse"
+  | "orthography";
 
 export interface Issue {
   kind: IssueKind;
@@ -56,6 +61,7 @@ export const ISSUE_LABEL: Record<IssueKind, string> = {
   repeatedending: "文末の重なり",
   nearbyrepeat: "近くの繰り返し",
   overuse: "使いすぎ",
+  orthography: "表記ゆれ",
 };
 
 /** 判定のしきい値。Rust の StyleOptions と同じ形で渡す。 */

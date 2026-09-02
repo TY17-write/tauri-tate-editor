@@ -576,6 +576,7 @@ button.toggle.is-on {
 .report-list .kind-repeatedending { background: #1e6fb8; }
 .report-list .kind-nearbyrepeat { background: #128f6a; }
 .report-list .kind-overuse { background: #8a5cc4; }
+.report-list .kind-orthography { background: #b07a1c; }
 .report-list .excerpt {
   display: block;
   color: var(--ui-sub);
@@ -1002,6 +1003,52 @@ button.toggle.is-on {
 }
 .rubybox-hint {
   font-size: 11px;
+}
+
+/* ---------- 類義語の小窓 ---------- */
+.synbox {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-inline-size: 340px;
+  padding: 8px 10px;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  font-size: 12px;
+  color: var(--ui-sub);
+}
+.synbox[hidden] {
+  display: none;
+}
+.synbox-head {
+  color: var(--ui-text);
+}
+.synbox-head span {
+  font-weight: 600;
+}
+.synbox-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  max-block-size: 180px;
+  overflow-y: auto;
+}
+.synbox-list button {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+/* 同義語グループの区切り。多義語では意味ごとにグループが分かれる */
+.syn-sep {
+  inline-size: 1px;
+  block-size: 14px;
+  background: var(--ui-border);
+  margin: 0 3px;
 }
 
 /* ---------- ステータスバー ---------- */

@@ -61,10 +61,49 @@ pub struct Mark {
     pub pos: PosTag,
 }
 
+/// 表記ゆれ検出に使う語。位置は UTF-16 単位。
+///
+/// SudachiDict の正規化形は語形の揺れと活用を吸収した見出しになる
+/// （子ども→子供、頂い→頂く）。同じ正規化形・同じ活用の位置で
+/// 表層が違えば、それは書き分けではなく表記の揺れ。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Word {
+    pub start: u32,
+    pub end: u32,
+    /// 画面に出ている表記
+    pub surface: String,
+    /// 正規化形
+    pub norm: String,
+    /// 活用型と活用形（`五段-カ行|連用形-イ音便`）。無活用は `*|*`
+    pub conj: String,
+    /// 品詞大分類
+    pub pos: String,
+}
+
+/// 一段落ぶんの解析結果。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Analysis {
+    pub marks: Vec<Mark>,
+    pub words: Vec<Word>,
+}
+
+/// 表記ゆれを見る品詞。
+/// 助詞・助動詞・記号は表記が揺れても意図的なことが多いので見ない。
+/// 数詞も除く（三人/3人 は組版の方針であって語の揺れではない）。
+fn is_variant_pos(major: &str, minor: &str) -> bool {
+    if minor == "数詞" {
+        return false;
+    }
+    matches!(
+        major,
+        "名詞" | "代名詞" | "動詞" | "形容詞" | "形状詞" | "副詞" | "連体詞" | "接続詞" | "感動詞"
+    )
+}
+
 static SEGMENTER: OnceCell<Segmenter> = OnceCell::new();
 
 /// 辞書を読み込んで Segmenter を用意する。二回目以降は使い回す。
-fn segmenter() -> Result<&'static Segmenter, String> {
+pub(crate) fn segmenter() -> Result<&'static Segmenter, String> {
     SEGMENTER.get_or_try_init(|| {
         let dictionary = load_dictionary("embedded://sudachidict")
             .map_err(|e| format!("辞書の読み込みに失敗: {e}"))?;
@@ -72,10 +111,13 @@ fn segmenter() -> Result<&'static Segmenter, String> {
     })
 }
 
-/// 一段落を解析してマーカー範囲を返す。
-pub fn analyze_text(text: &str) -> Result<Vec<Mark>, String> {
+/// 一段落を解析して、マーカー範囲と表記ゆれ用の語を返す。
+///
+/// 一度の分かち書きから両方を取り出す。マーカーは打鍵のたびに
+/// 引き直すので、ここで二度解析すると重くなる。
+pub fn analyze_text(text: &str) -> Result<Analysis, String> {
     if text.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Analysis::default());
     }
 
     let seg = segmenter()?;
@@ -93,23 +135,43 @@ pub fn analyze_text(text: &str) -> Result<Vec<Mark>, String> {
     }
     utf16_at[text.len()] = u16_pos;
 
-    let mut marks = Vec::new();
+    let mut out = Analysis::default();
     for token in tokens.iter_mut() {
-        let details = token.details();
-        let Some(pos) = PosTag::from_details(&details) else {
-            continue;
-        };
         let (s, e) = (token.byte_start, token.byte_end);
         if s > text.len() || e > text.len() || s >= e {
             continue;
         }
-        marks.push(Mark {
+        let details = token.details();
+
+        if let Some(pos) = PosTag::from_details(&details) {
+            out.marks.push(Mark {
+                start: utf16_at[s],
+                end: utf16_at[e],
+                pos,
+            });
+        }
+
+        // 表記ゆれ用の語。未知語（details が短い）はここで落ちる
+        let (Some(major), Some(minor), Some(norm)) =
+            (details.get(1), details.get(2), details.get(8))
+        else {
+            continue;
+        };
+        if !is_variant_pos(major, minor) || *norm == "*" || norm.is_empty() {
+            continue;
+        }
+        let conj_type = details.get(5).copied().unwrap_or("*");
+        let conj_form = details.get(6).copied().unwrap_or("*");
+        out.words.push(Word {
             start: utf16_at[s],
             end: utf16_at[e],
-            pos,
+            surface: text[s..e].to_string(),
+            norm: (*norm).to_string(),
+            conj: format!("{conj_type}|{conj_form}"),
+            pos: (*major).to_string(),
         });
     }
-    Ok(marks)
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -118,7 +180,9 @@ mod tests {
 
     #[test]
     fn 副詞と形容詞を拾う() {
-        let marks = analyze_text("とても静かな夜だった。ゆっくりと長い道を歩く。").unwrap();
+        let marks = analyze_text("とても静かな夜だった。ゆっくりと長い道を歩く。")
+            .unwrap()
+            .marks;
         assert!(!marks.is_empty(), "マーカーが1つも取れていない");
         assert!(marks.iter().any(|m| m.pos == PosTag::Adverb));
         assert!(marks.iter().any(|m| m.pos == PosTag::Adjective));
@@ -128,7 +192,7 @@ mod tests {
     fn サロゲートペアを含んでも位置がずれない() {
         // 𠮟 は UTF-8 で 4 バイト、UTF-16 で 2 コード単位
         let text = "𠮟られてとても悲しい";
-        let marks = analyze_text(text).unwrap();
+        let marks = analyze_text(text).unwrap().marks;
         let utf16: Vec<u16> = text.encode_utf16().collect();
         for m in &marks {
             assert!(
@@ -144,7 +208,7 @@ mod tests {
 
     #[test]
     fn 空文字列は空を返す() {
-        assert!(analyze_text("").unwrap().is_empty());
+        assert!(analyze_text("").unwrap().marks.is_empty());
     }
 
     #[test]
@@ -160,6 +224,21 @@ mod tests {
         assert_eq!(b, c);
     }
 
+    /// details の並びを目で見るための補助。
+    /// `cargo test 詳細を表示 -- --nocapture`
+    #[test]
+    fn 詳細を表示() {
+        let seg = segmenter().unwrap();
+        for text in ["子どもを頂いた。走った犬。ヴァイオリンだ"] {
+            let mut tokens = seg.segment(Cow::Borrowed(text)).unwrap();
+            println!("── {text}");
+            for t in tokens.iter_mut() {
+                let d = t.details();
+                println!("   {:?}", d);
+            }
+        }
+    }
+
     /// 解析結果を目で見るための補助。`cargo test 解析結果を表示 -- --nocapture`
     #[test]
     fn 解析結果を表示() {
@@ -168,7 +247,7 @@ mod tests {
             "問題とならない",
             "とても静かな夜だった",
         ] {
-            let marks = analyze_text(text).unwrap();
+            let marks = analyze_text(text).unwrap().marks;
             let u: Vec<u16> = text.encode_utf16().collect();
             println!("── {text}");
             if marks.is_empty() {

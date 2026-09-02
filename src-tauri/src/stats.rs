@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::analyzer::{Mark, PosTag};
+use crate::analyzer::{Mark, PosTag, Word};
 
 /// 指摘の種類。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,6 +20,8 @@ pub enum IssueKind {
     NearbyRepeat,
     /// 特定の語を使いすぎている
     Overuse,
+    /// 同じ語の表記が揺れている（子供／子ども）
+    Orthography,
 }
 
 /// 指摘一件。
@@ -185,6 +187,8 @@ fn excerpt(s: &str, limit: usize) -> String {
 pub struct ParaInput<'a> {
     pub text: &'a str,
     pub marks: &'a [Mark],
+    /// 表記ゆれ検出に使う語（analyzer が分かち書きから取り出したもの）
+    pub words: &'a [Word],
 }
 
 /// 本文全体を調べて報告を作る。
@@ -281,6 +285,9 @@ pub fn analyze(paras: &[ParaInput<'_>], opts: &StyleOptions) -> StyleReport {
     // 使いすぎ
     detect_overuse(paras, opts, report.chars, &mut issues);
 
+    // 表記ゆれ
+    detect_orthography(paras, &mut issues);
+
     report.avg_sentence = if report.sentences > 0 {
         total_sentence_chars as f64 / report.sentences as f64
     } else {
@@ -332,6 +339,87 @@ fn detect_nearby_repeat(
         }
         seen.push((word, m.start));
     }
+}
+
+/// 同じ語の表記が揺れていないか。
+///
+/// SudachiDict の正規化形は語形の揺れと活用を吸収した見出しになる
+/// （子ども→子供、頂い→頂く）。「正規化形・品詞・活用」が同じなのに
+/// 表層の違う語が混ざっていたら、それは書き分けではなく表記の揺れ。
+/// 活用まで合わせるのは、走る／走っ のような活用違いを揺れと
+/// 取り違えないため（頂いた／いただいた は同じ活用形なので拾える）。
+///
+/// 指摘は語彙素（正規化形）ごとに 1 件。位置は少ないほうの表記の
+/// 初出に付ける。多数派に合わせて直すことが多いため。
+fn detect_orthography(paras: &[ParaInput<'_>], issues: &mut Vec<Issue>) {
+    use std::collections::HashMap;
+
+    struct Occ {
+        count: usize,
+        para: usize,
+        start: u32,
+        end: u32,
+    }
+    // (正規化形, 品詞, 活用) → 表層 → 出現
+    let mut groups: HashMap<(String, String, String), HashMap<String, Occ>> = HashMap::new();
+    for (pi, para) in paras.iter().enumerate() {
+        if is_heading(para.text) {
+            continue;
+        }
+        for w in para.words {
+            let key = (w.norm.clone(), w.pos.clone(), w.conj.clone());
+            let occ = groups.entry(key).or_default();
+            let e = occ.entry(w.surface.clone()).or_insert(Occ {
+                count: 0,
+                para: pi,
+                start: w.start,
+                end: w.end,
+            });
+            e.count += 1;
+        }
+    }
+
+    // 同じ語彙素が複数の活用形で揺れていると、活用形の数だけ引っかかる。
+    // 正規化形ごとに、出現の多い組だけを代表として報告する
+    let mut best: HashMap<String, (usize, Vec<(String, Occ)>)> = HashMap::new();
+    for ((norm, _pos, _conj), occ) in groups {
+        if occ.len() < 2 {
+            continue;
+        }
+        let total: usize = occ.values().map(|o| o.count).sum();
+        let entry = best.entry(norm).or_insert((0, Vec::new()));
+        if total > entry.0 {
+            let mut list: Vec<(String, Occ)> = occ.into_iter().collect();
+            // 多い順。同数なら表記順で安定させる
+            list.sort_by(|a, b| b.1.count.cmp(&a.1.count).then(a.0.cmp(&b.0)));
+            *entry = (total, list);
+        }
+    }
+
+    let mut found: Vec<Issue> = Vec::new();
+    for (_norm, (_total, list)) in best {
+        let Some(minority) = list.last() else {
+            continue;
+        };
+        let msg = list
+            .iter()
+            .take(3)
+            .map(|(s, o)| format!("「{s}」{} 回", o.count))
+            .collect::<Vec<_>>()
+            .join(" / ");
+        let more = if list.len() > 3 { " など" } else { "" };
+        found.push(Issue {
+            kind: IssueKind::Orthography,
+            para: minority.1.para,
+            start: minority.1.start,
+            end: minority.1.end,
+            message: format!("表記が揺れています: {msg}{more}"),
+            excerpt: minority.0.clone(),
+        });
+    }
+    // 位置順に。HashMap の順に出すと開くたびに並びが変わる
+    found.sort_by_key(|i| (i.para, i.start));
+    issues.extend(found);
 }
 
 /// 決まった語を使いすぎていないか。
@@ -386,7 +474,91 @@ mod tests {
     use super::*;
 
     fn input<'a>(text: &'a str, marks: &'a [Mark]) -> ParaInput<'a> {
-        ParaInput { text, marks }
+        ParaInput {
+            text,
+            marks,
+            words: &[],
+        }
+    }
+
+    #[test]
+    fn 表記ゆれを指摘する() {
+        let words_a = [
+            Word {
+                start: 0,
+                end: 2,
+                surface: "子供".into(),
+                norm: "子供".into(),
+                conj: "*|*".into(),
+                pos: "名詞".into(),
+            },
+            Word {
+                start: 5,
+                end: 8,
+                surface: "子ども".into(),
+                norm: "子供".into(),
+                conj: "*|*".into(),
+                pos: "名詞".into(),
+            },
+            Word {
+                start: 10,
+                end: 12,
+                surface: "子供".into(),
+                norm: "子供".into(),
+                conj: "*|*".into(),
+                pos: "名詞".into(),
+            },
+        ];
+        let paras = [ParaInput {
+            text: "子供と、子どもと、子供。",
+            marks: &[],
+            words: &words_a,
+        }];
+        let r = analyze(&paras, &StyleOptions::default());
+        let hits: Vec<&Issue> = r
+            .issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::Orthography)
+            .collect();
+        assert_eq!(hits.len(), 1, "{:?}", r.issues);
+        // 少ないほうの表記（子ども）の初出に付く
+        assert_eq!(hits[0].excerpt, "子ども");
+        assert_eq!(hits[0].start, 5);
+        assert!(hits[0].message.contains("「子供」2 回"));
+        assert!(hits[0].message.contains("「子ども」1 回"));
+    }
+
+    #[test]
+    fn 活用形が違うだけなら表記ゆれではない() {
+        let words = [
+            Word {
+                start: 0,
+                end: 2,
+                surface: "走る".into(),
+                norm: "走る".into(),
+                conj: "五段-ラ行|終止形-一般".into(),
+                pos: "動詞".into(),
+            },
+            Word {
+                start: 4,
+                end: 6,
+                surface: "走っ".into(),
+                norm: "走る".into(),
+                conj: "五段-ラ行|連用形-促音便".into(),
+                pos: "動詞".into(),
+            },
+        ];
+        let paras = [ParaInput {
+            text: "走る。走った。",
+            marks: &[],
+            words: &words,
+        }];
+        let r = analyze(&paras, &StyleOptions::default());
+        assert!(
+            r.issues.iter().all(|i| i.kind != IssueKind::Orthography),
+            "{:?}",
+            r.issues
+        );
     }
 
     #[test]

@@ -524,7 +524,7 @@ pub fn toggle_emphasis(line: &str, start: u32, end: u32, n: Notation) -> Option<
 }
 
 /// UTF-16 の位置をバイト位置に直す。文字の途中を指していたら None。
-fn utf16_to_byte(s: &str, target: u32) -> Option<usize> {
+pub(crate) fn utf16_to_byte(s: &str, target: u32) -> Option<usize> {
     let mut u = 0u32;
     for (i, ch) in s.char_indices() {
         if u == target {
@@ -536,7 +536,7 @@ fn utf16_to_byte(s: &str, target: u32) -> Option<usize> {
 }
 
 /// バイト位置を UTF-16 の位置に直す。
-fn byte_to_utf16(s: &str, byte: usize) -> u32 {
+pub(crate) fn byte_to_utf16(s: &str, byte: usize) -> u32 {
     s[..byte].encode_utf16().count() as u32
 }
 

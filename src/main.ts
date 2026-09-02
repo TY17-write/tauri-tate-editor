@@ -440,7 +440,7 @@ notationSel.value = notation;
 
 /** 記法の書き方と、ルビ・傍点のキーを吹き出しに出す。 */
 function setNotationHint(): void {
-  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点`;
+  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点 / Ctrl+T 類義語`;
 }
 setNotationHint();
 
@@ -480,13 +480,17 @@ function openRubyBox(pick?: HTMLElement): void {
 }
 
 /** 小窓を、指した場所の近くかつ画面の中に収まる位置へ置く。 */
-function placeRubyBox(near: DOMRect | null): void {
-  const box = rubyBox.getBoundingClientRect();
+function placeBox(el: HTMLElement, near: DOMRect | null): void {
+  const box = el.getBoundingClientRect();
   const margin = 8;
   const x = near ? near.left + near.width / 2 - box.width / 2 : window.innerWidth / 2 - box.width / 2;
   const y = near ? near.bottom + margin : window.innerHeight / 2;
-  rubyBox.style.left = `${Math.min(Math.max(margin, x), window.innerWidth - box.width - margin)}px`;
-  rubyBox.style.top = `${Math.min(Math.max(margin, y), window.innerHeight - box.height - margin)}px`;
+  el.style.left = `${Math.min(Math.max(margin, x), window.innerWidth - box.width - margin)}px`;
+  el.style.top = `${Math.min(Math.max(margin, y), window.innerHeight - box.height - margin)}px`;
+}
+
+function placeRubyBox(near: DOMRect | null): void {
+  placeBox(rubyBox, near);
 }
 
 /** 小窓を閉じる。振らずに閉じただけなので、覚えた場所も捨てる。 */
@@ -522,6 +526,69 @@ viewport.addEventListener("click", (e) => {
   const ruby = el?.closest("ruby");
   if (ruby) openRubyBox(ruby as HTMLElement);
 });
+
+/* ---------- 類義語の小窓 ---------- */
+const synBox = $<HTMLElement>("synBox");
+const synWord = $<HTMLElement>("synWord");
+const synList = $<HTMLElement>("synList");
+
+/**
+ * キャレット位置（または選択範囲）の語の類義語を出す。
+ *
+ * SudachiDict の同義語グループを Rust が引く。候補をクリックすると
+ * その語で置き換える。グループが複数ある語（多義語）は、グループの
+ * あいだに区切りを入れて出す。
+ */
+async function openSynBox(): Promise<void> {
+  closeSynBox();
+  try {
+    const { hit, message, rect } = await session.lookupSynonyms();
+    if (!hit) {
+      statusMsg.textContent = message;
+      statusMsg.classList.remove("err");
+      return;
+    }
+    synWord.textContent = hit.word;
+    synList.replaceChildren();
+    const seen = new Set<string>();
+    let shown = 0;
+    for (const group of hit.groups) {
+      let first = true;
+      for (const w of group) {
+        if (seen.has(w) || shown >= 40) continue;
+        seen.add(w);
+        // グループの変わり目にだけ区切りを入れる
+        if (first && shown > 0) {
+          const sep = document.createElement("span");
+          sep.className = "syn-sep";
+          synList.appendChild(sep);
+        }
+        first = false;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = w;
+        b.addEventListener("click", () => {
+          synBox.hidden = true;
+          void runNotationCommand(() => session.applySynonym(w));
+        });
+        synList.appendChild(b);
+        shown += 1;
+      }
+    }
+    synBox.hidden = false;
+    placeBox(synBox, rect);
+  } catch (err) {
+    statusMsg.textContent = `エラー: ${String(err)}`;
+    statusMsg.classList.add("err");
+  }
+}
+
+/** 類義語の小窓を閉じる。 */
+function closeSynBox(): void {
+  if (synBox.hidden) return;
+  synBox.hidden = true;
+  session.cancelSynonym();
+}
 
 /**
  * ルビと傍点のコマンドを走らせて、結果を知らせる。
@@ -793,6 +860,7 @@ const ISSUE_KINDS: IssueKind[] = [
   "repeatedending",
   "nearbyrepeat",
   "overuse",
+  "orthography",
 ];
 const shownKinds = new Set<IssueKind>(ISSUE_KINDS);
 let styleOptions: StyleOptions = loadOptions();
@@ -985,6 +1053,8 @@ function jumpToIssue(issue: Issue, li: HTMLElement): void {
 // 要素に直接ではなく document で受けて中身かどうかで判定する。
 document.addEventListener("pointerdown", (e) => {
   if (paper.contains(e.target as Node)) clearIssueHighlight();
+  // 類義語の小窓は、外を突いたら閉じる
+  if (!synBox.hidden && !synBox.contains(e.target as Node)) closeSynBox();
 });
 
 async function refreshReport(): Promise<void> {
@@ -1177,6 +1247,12 @@ window.addEventListener("keydown", (e) => {
       void runNotationCommand(() => session.toggleEmphasis());
       return;
     }
+    if (k === "t") {
+      // 類義語。キャレット位置（または選択範囲）の語を引く
+      e.preventDefault();
+      void openSynBox();
+      return;
+    }
     if (k === "e") {
       e.preventDefault();
       void setMode(session.editMode === "source" ? "preview" : "source");
@@ -1197,6 +1273,12 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape") {
+    // 類義語の小窓がいちばん手前。次に検索バー、最後に強調
+    if (!synBox.hidden) {
+      e.preventDefault();
+      closeSynBox();
+      return;
+    }
     // 検索バーが開いていればそちらを優先し、次の Esc で強調を解く
     if (!findbar.hidden) {
       e.preventDefault();
