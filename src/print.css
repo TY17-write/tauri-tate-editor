@@ -23,9 +23,14 @@
        合わせて行送りを別に決めると、詰まり具合が画面と変わる
    ============================================================ */
 
+/* 用紙の上下（＝縦書きの行の方向）の余白は body の padding で取る。
+   @page の上下マージンを 0 にするのは、Chromium が日付・タイトル・
+   URL などのヘッダーとフッターをページの上下マージンの中に刷る
+   ため。場所を無くせば刷られない。左右のマージン（ページ送りの
+   方向）はページごとに要るので @page に残す。 */
 @page {
   size: A4 landscape;
-  margin: 15mm;
+  margin: 0 15mm;
 }
 
 /* 画面のための操作部はすべて落とす */
@@ -108,6 +113,95 @@ body {
   overflow: visible !important;
   background: #fff !important;
 }
+/* 行の方向（用紙の上下）の余白。@page の上下は 0 なのでここで取る。
+   縦書きでは上下= inline 軸なので、どのページにも同じ余白が出る */
+body {
+  padding: 15mm 0 !important;
+  margin: 0 !important;
+}
+
+/* ============================================================
+   印刷のマス目は「ページごとの下敷き」で描く
+
+   画面と同じく .paper の背景グラデーションで描くと、ページに
+   分割された要素の背景が崩れる（実測）。ページごとに枠の位置が
+   文字とずれ、線が抜け、升の大きさまで変わる。box-decoration-break:
+   clone でもページの後半で崩れが残った。分割された要素の背景の
+   描画は信用できない。
+
+   そこで印刷前に、main.ts がページ 1 枚ぶんの大きさの下敷き
+   （.printgrid）をページ数だけ .paperwrap に並べる。1 枚の下敷きは
+   ページをまたがないので分割されず、背景は画面と同じに描かれる。
+   位置と大きさ（mm）は main.ts が入れる。ページ区切りの紅線は
+   印刷では物理のページがその役目なので描かない。
+   ============================================================ */
+
+.paperwrap {
+  position: relative !important;
+  /* 下敷きは z-index: -1。紙の白より上・本文より下に置くため、
+     ここをスタッキングコンテキストにして受け止める */
+  z-index: 0 !important;
+  background: #fff !important;
+  margin: 0 !important;
+}
+
+/* 用紙自身のマス目は描かない。白も塗らない（塗ると下敷きが隠れる） */
+.paper {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.printgrid {
+  display: block !important;
+  position: absolute !important;
+  inset-inline-start: 0 !important;
+  inline-size: calc(var(--chars) * var(--cell)) !important;
+  z-index: -1 !important;
+  pointer-events: none !important;
+  print-color-adjust: exact !important;
+  -webkit-print-color-adjust: exact !important;
+}
+
+/* 升目。画面の .grid-full と同じ 3 層（ページ区切りの層だけ無い）。
+   ここを変えるときは styles.css の .grid-full も揃えること */
+/* 線の太さ。画面の 1px にあたる。印刷では背景がラスタ化される
+   ため、細すぎると線が飛び飛びに抜ける（実測）。0.3mm あれば
+   どの解像度でも必ず 1 ドット以上に掛かる */
+.printgrid {
+  --pline: 0.3mm;
+}
+
+.printgrid.pg-full {
+  background-image:
+    repeating-linear-gradient(
+      to left,
+      transparent 0 var(--gutter),
+      var(--rule) var(--gutter) calc(var(--gutter) + var(--pline)),
+      transparent calc(var(--gutter) + var(--pline)) calc(var(--gutter) + var(--cell)),
+      var(--rule) calc(var(--gutter) + var(--cell)) calc(var(--gutter) + var(--cell) + var(--pline)),
+      transparent calc(var(--gutter) + var(--cell) + var(--pline)) var(--step)
+    ),
+    repeating-linear-gradient(
+      to left,
+      var(--paper) 0 var(--gutter),
+      transparent var(--gutter) calc(var(--gutter) + var(--cell)),
+      var(--paper) calc(var(--gutter) + var(--cell)) var(--step)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--rule) 0 var(--pline),
+      transparent var(--pline) var(--cell)
+    ) !important;
+}
+
+/* 行罫のみ */
+.printgrid.pg-rules {
+  background-image: repeating-linear-gradient(
+    to left,
+    var(--rule) 0 var(--pline),
+    transparent var(--pline) var(--step)
+  ) !important;
+}
 
 .app {
   display: block !important;
@@ -125,7 +219,8 @@ body {
 .paper {
   border: 0 !important;
   margin: 0 !important;
-  background-color: #fff !important;
+  /* 白は paperwrap が塗る。ここで塗ると下敷きのマス目が隠れる */
+  background-color: transparent !important;
   /* 用紙いっぱいに使う。画面用の最小の大きさは邪魔になる */
   min-block-size: 0 !important;
   block-size: auto !important;

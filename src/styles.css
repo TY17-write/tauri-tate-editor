@@ -611,11 +611,16 @@ button.toggle.is-on {
   display: flex;
   align-items: flex-start;
 }
-.viewport > .paper {
+.viewport > .paperwrap {
   margin-left: auto;
   /* flex の子は既定で縮む。用紙が画面からあふれたときに縮まれて
      しまうとスクロールの余地ごと消えるので、大きさは固定する */
   flex: 0 0 auto;
+}
+
+/* 印刷用のマス目の下敷き。画面では出さない（print.css を参照） */
+.printgrid {
+  display: none;
 }
 
 /* 縦書きでは論理軸が入れ替わる。
@@ -783,7 +788,9 @@ button.toggle.is-on {
 
    余った左右の空きはルビと傍点が出る場所。原稿用紙の行間と同じで、
    ここに線を引かないほうが原稿用紙らしくなる。 */
-.paper {
+/* paperwrap に置くのは、印刷用の下敷き（.printgrid）にも同じ値を
+   継がせるため。paper はこの子なので、そのまま継いで使える */
+.paperwrap {
   /* 行の帯のうち、字の左右に余る幅。ルビと傍点が出る場所 */
   --gutter: max(0px, calc((var(--step) - var(--cell)) / 2));
   /* 傍点の丸の大きさ。行間に収まる範囲で、行送りに応じて育つ */

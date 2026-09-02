@@ -399,6 +399,53 @@ btnMarker.addEventListener("click", () => {
   scheduleSave();
 });
 
+/* ---------- 印刷用のマス目の下敷き ----------
+   ページに分割された要素の背景は崩れて描かれる（枠が文字とずれ、
+   線が抜ける。実測）。そこで印刷のマス目は .paper の背景ではなく、
+   ページ 1 枚ぶんの下敷き（.printgrid）をページ数だけ並べて描く。
+   1 枚はページをまたがないので分割されず、背景が正しく描かれる。
+
+   数値は print.css の @page と揃えること（A4 横・余白 15mm）。
+   折り返しは画面と印刷で同じ（1 行の字数が同じ）なので、
+   画面の行数から印刷の行数とページ数がそのまま分かる。 */
+const paperwrap = $<HTMLElement>("paperwrap");
+
+function buildPrintGrids(): void {
+  clearPrintGrids();
+  const mode = gridSel.value;
+  if (mode !== "grid-full" && mode !== "grid-rules") return;
+
+  const PAGE_W = 297; // A4 横の幅(mm) = ページ送りの方向
+  const PAGE_H = 210; // A4 横の高さ(mm) = 行の方向
+  const MARGIN = 15;
+  const cellMM = (PAGE_H - MARGIN * 2) / layout.chars;
+  const stepMM = cellMM * (layout.step / layout.cell);
+  const perPage = Math.floor((PAGE_W - MARGIN * 2) / stepMM);
+  if (perPage < 1) return;
+
+  const border = 2; // 画面の用紙の枠線ぶん
+  const width = paper.getBoundingClientRect().width - border;
+  const totalLines = Math.max(1, Math.round(width / layout.step));
+  const pages = Math.max(1, Math.ceil(totalLines / perPage));
+
+  const frag = document.createDocumentFragment();
+  for (let k = 0; k < pages; k++) {
+    const d = document.createElement("div");
+    d.className = `printgrid ${mode === "grid-full" ? "pg-full" : "pg-rules"}`;
+    d.style.insetBlockStart = `${k * perPage * stepMM}mm`;
+    d.style.blockSize = `${perPage * stepMM}mm`;
+    frag.appendChild(d);
+  }
+  paperwrap.appendChild(frag);
+}
+
+function clearPrintGrids(): void {
+  for (const el of Array.from(paperwrap.querySelectorAll(".printgrid"))) el.remove();
+}
+
+window.addEventListener("beforeprint", buildPrintGrids);
+window.addEventListener("afterprint", clearPrintGrids);
+
 /* ---------- 印刷 ---------- */
 
 /**

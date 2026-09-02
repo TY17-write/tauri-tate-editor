@@ -186,12 +186,16 @@
         </aside>
 
         <main class="viewport" id="viewport">
-          <div
-            class="paper grid-full"
-            id="paper"
-            contenteditable="plaintext-only"
-            spellcheck="false"
-          ></div>
+          <!-- paperwrap は印刷用マス目の下敷き（.printgrid）の置き場。
+               本文（paper）の中に入れると段落モデルと食い違うため外に置く -->
+          <div class="paperwrap" id="paperwrap">
+            <div
+              class="paper grid-full"
+              id="paper"
+              contenteditable="plaintext-only"
+              spellcheck="false"
+            ></div>
+          </div>
         </main>
       </div>
 

@@ -14,6 +14,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/print.css" media="print" id="printStyles" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tp-check</title>
     <script>
@@ -230,7 +231,9 @@
           <ul class="report-list" id="reportList"></ul>
         </aside>
         <main class="viewport" id="viewport">
-          <div class="paper grid-full" id="paper" contenteditable="plaintext-only" spellcheck="false"></div>
+          <div class="paperwrap" id="paperwrap">
+            <div class="paper grid-full" id="paper" contenteditable="plaintext-only" spellcheck="false"></div>
+          </div>
         </main>
       </div>
 
