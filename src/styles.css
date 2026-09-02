@@ -623,6 +623,12 @@ button.toggle.is-on {
   display: none;
 }
 
+/* 印刷診断（main.ts の printDiagnostics）。print.css が本当に
+   当たっているかを、紙面の DIAG 行に出す */
+#printDiag::after {
+  content: var(--printcss-v, " / print.css: 未適用か古い");
+}
+
 /* 縦書きでは論理軸が入れ替わる。
    inline 軸 = 上下（1行の字数を決めるのはこちら）
    block  軸 = 右→左（行が並ぶ方向） */

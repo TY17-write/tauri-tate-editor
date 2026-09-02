@@ -465,6 +465,16 @@ function paraGridSvg(mode: "grid-full" | "grid-rules", lines: number): SVGSVGEle
   svg.setAttribute("viewBox", `0 0 ${f(w)} ${f(h)}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("aria-hidden", "true");
+  // スタイルは print.css に頼らず直接焼き込む。WebView2 が
+  // media="print" の CSS を古いままキャッシュすることがあり、
+  // absolute が当たらないと SVG がインライン要素として流れに入り、
+  // 段落が 1 行ぶん太って升が余る（実害）。
+  // absolute で流れから外し、z-index: -1 で文字の下に敷く
+  svg.setAttribute(
+    "style",
+    "display:block;position:absolute;inset:0;width:100%;height:100%;" +
+      "z-index:-1;pointer-events:none",
+  );
   const path = document.createElementNS(SVG_NS, "path");
   path.setAttribute("d", d.join(""));
   path.setAttribute("fill", "none");
@@ -498,12 +508,25 @@ function buildPrintGrids(): void {
       svg = paraGridSvg(mode, lines);
       cache.set(lines, svg);
     }
+    // 貼り付け先の段落側も print.css に頼らずここで整える。
+    // relative + z-index: 0 で、SVG を自分の箱に敷けるようにする。
+    // 空の段落は SVG を入れると :empty が外れて幅が消えるので、
+    // 1 行ぶんの幅も最低保証する（afterprint で外す）
+    p.style.position = "relative";
+    p.style.zIndex = "0";
+    p.style.minBlockSize = "var(--step)";
     p.appendChild(svg.cloneNode(true));
   }
 }
 
 function clearPrintGrids(): void {
   for (const el of Array.from(paper.querySelectorAll("svg.printgrid"))) el.remove();
+  for (const p of Array.from(paper.children) as HTMLElement[]) {
+    if (p.tagName !== "P") continue;
+    p.style.removeProperty("position");
+    p.style.removeProperty("z-index");
+    p.style.removeProperty("min-block-size");
+  }
 }
 
 /**
