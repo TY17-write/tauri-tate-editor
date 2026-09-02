@@ -506,13 +506,47 @@ function clearPrintGrids(): void {
   for (const el of Array.from(paper.querySelectorAll("svg.printgrid"))) el.remove();
 }
 
+/**
+ * 【一時的な診断】印刷ページの左下に、升の計算に使った値を刷り込む。
+ * 実機でだけ升がずれる問題の切り分け用。原因が取れたら外す。
+ */
+function printDiagnostics(): void {
+  const d = document.createElement("div");
+  d.id = "printDiag";
+  d.style.cssText =
+    "position:fixed;left:2mm;bottom:2mm;z-index:99;" +
+    "font:3mm/1.5 Consolas,monospace;color:#333;background:#fff;" +
+    "writing-mode:horizontal-tb;white-space:pre;";
+  const cs = getComputedStyle(paper);
+  const root = getComputedStyle(document.documentElement);
+  const paras = (Array.from(paper.children) as HTMLElement[])
+    .filter((p) => p.tagName === "P")
+    .slice(0, 3);
+  const rows = paras.map((p, i) => {
+    const lh = parseFloat(getComputedStyle(p).lineHeight);
+    const w = p.getBoundingClientRect().width;
+    const svg = p.querySelector("svg.printgrid");
+    return `p${i}: w=${w.toFixed(1)} lh=${lh.toFixed(2)} lines=${Math.round(w / lh)} vb=${svg?.getAttribute("viewBox") ?? "-"}`;
+  });
+  d.textContent = [
+    `DIAG v2 ${matchMedia("print").matches ? "PRINT-LAYOUT" : "SCREEN-LAYOUT"} mode=${paper.dataset.mode ?? "?"}`,
+    `dpr=${devicePixelRatio} chars=${layout.chars} cell=${layout.cell} step=${layout.step}`,
+    `paperFont=${cs.fontSize} paperLineH=${cs.lineHeight}`,
+    `--cell=${root.getPropertyValue("--cell").trim()} ratio=${root.getPropertyValue("--step-ratio").trim()}`,
+    ...rows,
+  ].join("\n");
+  document.body.appendChild(d);
+}
+
 window.addEventListener("beforeprint", () => {
   printing = true;
   buildPrintGrids();
+  printDiagnostics();
 });
 window.addEventListener("afterprint", () => {
   printing = false;
   clearPrintGrids();
+  document.getElementById("printDiag")?.remove();
   // 凍結中に画面の大きさが変わっていたかもしれないので測り直す
   fitCellToViewport();
 });
