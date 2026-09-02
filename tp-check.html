@@ -69,7 +69,12 @@
             if (at < 0) return null;
             if (end < at || start > at + 2) return null;
             return { word: "静か", start: at, end: at + 2,
-              groups: [["物静か", "閑静", "静粛"], ["穏やか", "安らか"]] };
+              groups: [
+                { label: "言い換え", words: ["物静か", "閑静"] },
+                { label: "同義", words: ["静粛", "静寂"] },
+                { label: "同義", words: ["穏やか", "安らか"] },
+                { label: "近い意味", words: ["のどか", "ひそやか"] },
+              ] };
           },
           list_fonts: () => [
             { name: "Meiryo", label: "メイリオ" },

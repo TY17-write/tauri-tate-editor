@@ -329,12 +329,23 @@ Ctrl+Z は `beforeinput` の historyUndo では受けられない。ブラウザ
 ページに keydown が届かない。Ctrl+R や Ctrl+B のような
 ページ配達されるキーとは扱いが違う。
 
-引くのは Sudachi 同義語辞書（`src-tauri/assets/synonyms.txt`、
-SudachiDict と同じ Works Applications の配布物・Apache License 2.0）。
-SudachiDict は語ごとに同義語グループ番号を持つので、分かち書きの
-details 末尾（synonym_group_ids）からグループを引き、番号→語の一覧は
-埋め込んだ同義語辞書で解決する。番号が取れない語でも、見出しの
-完全一致（表層と正規化形の両方）で引けるようにしてある。
+候補は三段で出す。
+
+- **言い換え** … Sudachi 同義語辞書（`src-tauri/assets/synonyms.txt`、
+  Apache License 2.0）。厳密な同義語で、グループは小さい。
+  SudachiDict の synonym_group_ids からグループ番号を取り、番号→語は
+  埋め込んだ辞書で解決する。番号が取れない語でも見出しの完全一致
+  （表層と正規化形の両方）で引ける
+- **同義** … 日本語 WordNet（`src-tauri/assets/wnjpn-ok.tab`、
+  再配布可・`wnja-LICENSE.txt` を同梱）。語を概念（synset）で
+  まとめた約 5.7 万概念・9.4 万語のデータで、類語辞典らしい広さは
+  こちらが担う。多義語は概念ごとにグループが分かれる
+- **近い意味** … WordNet の概念のつながりをたどった語。上位・下位の
+  概念と、形容詞の類似（sim）の語。つながりは wnjpn.db から抜き出した
+  `wnjpn-links.tsv`（日本語の語を持つ概念どうしに絞ってある）を使う
+
+活用した語（「歩い」）も、SudachiDict の正規化形（歩く）を鍵に
+WordNet が引ける。一度出した語は別の段に重ねて出さない。
 
 キャレット位置から引くときは行を分かち書きして、その位置に掛かる
 内容語を探す（助詞・助動詞・記号は飛ばす）。多義語はグループごとに

@@ -550,20 +550,23 @@ async function openSynBox(): Promise<void> {
     }
     synWord.textContent = hit.word;
     synList.replaceChildren();
-    const seen = new Set<string>();
-    let shown = 0;
+    let prevLabel = "";
     for (const group of hit.groups) {
-      let first = true;
-      for (const w of group) {
-        if (seen.has(w) || shown >= 40) continue;
-        seen.add(w);
-        // グループの変わり目にだけ区切りを入れる
-        if (first && shown > 0) {
-          const sep = document.createElement("span");
-          sep.className = "syn-sep";
-          synList.appendChild(sep);
-        }
-        first = false;
+      if (group.words.length === 0) continue;
+      // 種類（言い換え / 同義 / 近い意味）が変わるところに見出しを、
+      // 同じ種類のグループの切れ目（多義語の意味の違い）に区切りを置く
+      if (group.label !== prevLabel) {
+        const head = document.createElement("span");
+        head.className = "syn-label";
+        head.textContent = group.label;
+        synList.appendChild(head);
+        prevLabel = group.label;
+      } else {
+        const sep = document.createElement("span");
+        sep.className = "syn-sep";
+        synList.appendChild(sep);
+      }
+      for (const w of group.words) {
         const b = document.createElement("button");
         b.type = "button";
         b.textContent = w;
@@ -572,7 +575,6 @@ async function openSynBox(): Promise<void> {
           void runNotationCommand(() => session.applySynonym(w));
         });
         synList.appendChild(b);
-        shown += 1;
       }
     }
     synBox.hidden = false;

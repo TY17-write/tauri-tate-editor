@@ -121,6 +121,13 @@ export interface RubyTarget {
   rect: DOMRect | null;
 }
 
+/** 類義語のひとかたまり。Rust の `SynonymGroup` と対応する。 */
+export interface SynonymGroup {
+  /** 小窓の見出し（言い換え / 同義 / 近い意味） */
+  label: string;
+  words: string[];
+}
+
 /** 類義語の検索結果。Rust の `SynonymHit` と対応する。 */
 export interface SynonymHit {
   /** 引いた語 */
@@ -128,8 +135,8 @@ export interface SynonymHit {
   /** 語が行のどこにあるか（記法テキストの UTF-16） */
   start: number;
   end: number;
-  /** 同義語グループごとの語の一覧 */
-  groups: string[][];
+  /** 種類ごとの語の一覧 */
+  groups: SynonymGroup[];
 }
 
 export interface SessionEvents {
