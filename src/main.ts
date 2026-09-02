@@ -485,7 +485,14 @@ function buildPrintGrids(): void {
   const cache = new Map<number, SVGSVGElement>();
   for (const p of Array.from(paper.children) as HTMLElement[]) {
     if (p.tagName !== "P") continue;
-    const lines = Math.max(1, Math.round(p.getBoundingClientRect().width / layout.step));
+    // 行数 = 段落の幅 ÷ その段落のいまの行送り。
+    // layout.step（画面の px）で割ってはいけない。WebView2 では
+    // beforeprint が印刷レイアウトの適用後に届くことがあり、
+    // 印刷寸法の幅を画面の行送りで割ると行数を倍近く数えてしまう
+    // （升が半分に潰れて全段落ずれた。実害）。同じレイアウトの
+    // 幅と行送りで割れば、どちらの順序でも正しい。
+    const lineH = parseFloat(getComputedStyle(p).lineHeight) || layout.step;
+    const lines = Math.max(1, Math.round(p.getBoundingClientRect().width / lineH));
     let svg = cache.get(lines);
     if (!svg) {
       svg = paraGridSvg(mode, lines);

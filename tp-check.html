@@ -51,7 +51,8 @@
             layout: { chars: Number(q.get("chars")), lines: Number(q.get("lines") ?? 16),
               cell: 20, step: 34, font: 'TateHalfMincho, "MS 明朝", "MS Mincho", serif' },
             preset: "custom", grid: "grid-full", markStyle: "h", markerOn: true,
-            pos: ["adverb"], preview: false, theme: q.get("theme") ?? "light",
+            pos: ["adverb"], preview: q.get("preview") === "1",
+            theme: q.get("theme") ?? "light",
           };
           localStorage.setItem("tate-editor.settings", JSON.stringify(s));
         }
