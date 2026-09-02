@@ -320,8 +320,14 @@ Ctrl+Z は `beforeinput` の historyUndo では受けられない。ブラウザ
 
 ### 類義語検索
 
-`Ctrl+T` で、キャレット位置（または選択範囲）の語の類義語を小窓に
-出す。候補をクリックするとその語で置き換える。
+`Ctrl+I`（言い換え）か「類語」ボタンで、キャレット位置（または
+選択範囲）の語の類義語を小窓に出す。候補をクリックするとその語で
+置き換える。
+
+`Ctrl+T` は使えない。WebView2 がブラウザ側のアクセラレータ
+（タブ操作系。Ctrl+T / Ctrl+N / Ctrl+W）として飲み込んでしまい、
+ページに keydown が届かない。Ctrl+R や Ctrl+B のような
+ページ配達されるキーとは扱いが違う。
 
 引くのは Sudachi 同義語辞書（`src-tauri/assets/synonyms.txt`、
 SudachiDict と同じ Works Applications の配布物・Apache License 2.0）。

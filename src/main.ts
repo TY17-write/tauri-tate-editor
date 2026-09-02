@@ -440,7 +440,7 @@ notationSel.value = notation;
 
 /** 記法の書き方と、ルビ・傍点のキーを吹き出しに出す。 */
 function setNotationHint(): void {
-  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点 / Ctrl+T 類義語`;
+  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点 / Ctrl+I 類義語`;
 }
 setNotationHint();
 
@@ -588,6 +588,14 @@ function closeSynBox(): void {
   if (synBox.hidden) return;
   synBox.hidden = true;
   session.cancelSynonym();
+}
+
+{
+  const btn = $<HTMLButtonElement>("btnSynonym");
+  // ボタンにフォーカスを奪わせない。奪われると本文のキャレットが
+  // 消え、どの語を引けばよいか分からなくなる
+  btn.addEventListener("mousedown", (e) => e.preventDefault());
+  btn.addEventListener("click", () => void openSynBox());
 }
 
 /**
@@ -1247,8 +1255,12 @@ window.addEventListener("keydown", (e) => {
       void runNotationCommand(() => session.toggleEmphasis());
       return;
     }
-    if (k === "t") {
-      // 類義語。キャレット位置（または選択範囲）の語を引く
+    if (k === "i" || k === "t") {
+      // 類義語。キャレット位置（または選択範囲）の語を引く。
+      // 主は Ctrl+I（言い換え）。Ctrl+T は WebView2 がブラウザ側の
+      // アクセラレータ（タブ操作）として食ってしまい、ページに
+      // 届かない環境がある。素のブラウザでは効くので残しておく。
+      // Ctrl+I 既定の斜体もここで止まる
       e.preventDefault();
       void openSynBox();
       return;
