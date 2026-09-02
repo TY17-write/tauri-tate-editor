@@ -164,6 +164,11 @@ function wrapChar(node: Text, index: number): void {
   if (target.length > 1) target.splitText(1);
   const span = document.createElement("span");
   span.className = "hang";
+  // キャレットを中に入れない。span は letter-spacing: -1em を持つので、
+  // 中に文字を打たれると（IME の変換中文字列も含めて）字送り 0 を
+  // 継いでマスに載らなくなる。原子扱いなら挿入は必ず span の外に落ち、
+  // 消すときは句読点 1 字がまとまって消えるだけで済む
+  span.contentEditable = "false";
   target.parentNode?.insertBefore(span, target);
   span.appendChild(target);
 }
