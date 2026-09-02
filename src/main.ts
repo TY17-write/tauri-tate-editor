@@ -420,113 +420,102 @@ btnMarker.addEventListener("click", () => {
      ・下敷きをページ 1 枚ぶんの mm 寸法で並べても、実際のページの
        行数や行送りがエンジンの丸めでわずかに違い、本文が長くなる
        ほどマス目が滑っていく
-   そこで罫線は**段落ごとのインライン SVG** で引く。SVG は段落の箱
-   いっぱいに伸ばす（viewBox は行数×字数に比例）ので、段落の物理
-   寸法——つまり本文そのものの行送り・字送り——にそのまま貼り付き、
-   エンジン側の丸めや改ページがどうであっても本文と升がずれない。
-   ベクタのまま PDF に乗るので大きさによる崩れもない。
+     ・段落ごとのインライン SVG（過去の方式）は、ページをまたぐ
+       段落で崩れる。SVG 1 枚だと分割描画そのものが崩れ、行ごとの
+       absolute な SVG に分けても、absolute の子は段落の最初の
+       断片にしか置かれず、次ページ側の行に升が出ない
 
-   印刷前に各段落へ差し込み、印刷後に片付ける。段落の行数は画面で
-   測る（1 行の字数が同じなので、折り返しは画面と印刷で一致する）。 */
+   そこで下敷きは **position: fixed の 1 枚の SVG** で敷く。
+   fixed の要素は印刷では全ページに同じページ座標で繰り返し
+   描かれる（Chromium の仕様的挙動。透かしに使われるもの）ので、
+     ・段落や改ページと完全に無関係になり、またぎ問題が原理的に
+       消える
+     ・寸法は print.css と同じ式の mm 実寸で引く。本文の字送り・
+       行送りも同じ mm 定義なので、ページ内で升と文字が一致する
+     ・毎ページ同じ座標に描き直されるので、長文でも滑らない
+
+   印刷前に body へ差し込み、印刷後に片付ける。 */
 const SVG_NS = "http://www.w3.org/2000/svg";
-
-/**
- * 段落 1 つぶんのマス目 SVG。
- *
- * 座標系は「字送り = 1」の単位で組む。行送りは比（step/cell）で
- * 効かせ、実寸は段落の箱に合わせた引き伸ばしで決まる。
- */
-function paraGridSvg(mode: "grid-full" | "grid-rules", lines: number): SVGSVGElement {
-  const chars = layout.chars;
-  const S = layout.step / layout.cell; // 行送り（字送り単位）
-  const g = (S - 1) / 2; // 行間（片側）
-  const w = lines * S;
-  const h = chars;
-  const d: string[] = [];
-  const f = (v: number) => v.toFixed(4);
-
-  for (let j = 0; j < lines; j++) {
-    if (mode === "grid-rules") {
-      const x = w - j * S;
-      d.push(`M${f(x)} 0V${f(h)}`);
-      continue;
-    }
-    // 字の箱の左右の縦線と、箱の中だけの横線
-    const xr = w - j * S - g;
-    const xl = w - (j + 1) * S + g;
-    d.push(`M${f(xl)} 0V${f(h)}`, `M${f(xr)} 0V${f(h)}`);
-    for (let i = 0; i <= chars; i++) {
-      d.push(`M${f(xl)} ${f(i)}H${f(xr)}`);
-    }
-  }
-
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("class", "printgrid");
-  svg.setAttribute("viewBox", `0 0 ${f(w)} ${f(h)}`);
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.setAttribute("aria-hidden", "true");
-  // スタイルは print.css に頼らず直接焼き込む。WebView2 が
-  // media="print" の CSS を古いままキャッシュすることがあり、
-  // absolute が当たらないと SVG がインライン要素として流れに入り、
-  // 段落が 1 行ぶん太って升が余る（実害）。
-  // absolute で流れから外し、z-index: -1 で文字の下に敷く
-  svg.setAttribute(
-    "style",
-    "display:block;position:absolute;inset:0;width:100%;height:100%;" +
-      "z-index:-1;pointer-events:none",
-  );
-  const path = document.createElementNS(SVG_NS, "path");
-  path.setAttribute("d", d.join(""));
-  path.setAttribute("fill", "none");
-  // 1 単位 = 1 字送り。0.25mm 相当の線の太さを単位に直す。
-  // 字送りの実寸は (210mm - 15mm×2) / 字数（print.css と揃える）
-  const cellMM = (210 - 15 * 2) / chars;
-  path.setAttribute("style", `stroke: var(--rule); stroke-width: ${(0.25 / cellMM).toFixed(4)}`);
-  svg.appendChild(path);
-  return svg;
-}
 
 function buildPrintGrids(): void {
   clearPrintGrids();
   const mode = gridSel.value;
   if (mode !== "grid-full" && mode !== "grid-rules") return;
 
-  // 行数の同じ段落は SVG を使い回す（長編では大半が同じ行数）
-  const cache = new Map<number, SVGSVGElement>();
-  for (const p of Array.from(paper.children) as HTMLElement[]) {
-    if (p.tagName !== "P") continue;
-    // 行数 = 段落の幅 ÷ その段落のいまの行送り。
-    // layout.step（画面の px）で割ってはいけない。WebView2 では
-    // beforeprint が印刷レイアウトの適用後に届くことがあり、
-    // 印刷寸法の幅を画面の行送りで割ると行数を倍近く数えてしまう
-    // （升が半分に潰れて全段落ずれた。実害）。同じレイアウトの
-    // 幅と行送りで割れば、どちらの順序でも正しい。
-    const lineH = parseFloat(getComputedStyle(p).lineHeight) || layout.step;
-    const lines = Math.max(1, Math.round(p.getBoundingClientRect().width / lineH));
-    let svg = cache.get(lines);
-    if (!svg) {
-      svg = paraGridSvg(mode, lines);
-      cache.set(lines, svg);
+  // 実寸（mm）。print.css の組版と同じ式で計算する:
+  // A4 横（297×210）、@page 左右 15mm、body 上下 15mm、
+  // 字送り = 紙の高さの残り / 字数、行送り = 字送り × 画面での比
+  const chars = layout.chars;
+  const cell = (210 - 15 * 2) / chars;
+  const step = cell * (layout.step / layout.cell);
+  const g = (step - cell) / 2; // 行間（片側）
+  const W = 297 - 15 * 2; // ページ送り方向の紙面の幅
+  const H = chars * cell; // 行の長さ
+  const cols = Math.floor(W / step + 1e-6); // 1 ページに入る行数
+
+  const f = (v: number) => v.toFixed(4);
+  const d: string[] = [];
+  for (let k = 0; k < cols; k++) {
+    if (mode === "grid-rules") {
+      // 行と行のあいだの罫線（k=0 は本文の右端の線）
+      d.push(`M${f(W - k * step)} 0V${f(H)}`);
+    } else {
+      // 字の箱の左右の縦線と、箱の中だけの横線
+      const xr = W - k * step - g;
+      const xl = xr - cell;
+      d.push(`M${f(xl)} 0V${f(H)}`, `M${f(xr)} 0V${f(H)}`);
+      for (let i = 0; i <= chars; i++) {
+        d.push(`M${f(xl)} ${f(i * cell)}H${f(xr)}`);
+      }
     }
-    // 貼り付け先の段落側も print.css に頼らずここで整える。
-    // relative + z-index: 0 で、SVG を自分の箱に敷けるようにする。
-    // 空の段落は SVG を入れると :empty が外れて幅が消えるので、
-    // 1 行ぶんの幅も最低保証する（afterprint で外す）
-    p.style.position = "relative";
-    p.style.zIndex = "0";
-    p.style.minBlockSize = "var(--step)";
-    p.appendChild(svg.cloneNode(true));
   }
+
+  const div = document.createElement("div");
+  div.id = "printfixedgrid";
+  div.setAttribute("aria-hidden", "true");
+
+  // スタイルは print.css に頼らず DOM に焼き込む。WebView2 が
+  // media="print" の CSS を古いままキャッシュすることがある（実害）。
+  // <style> ごと差し込めばキャッシュの影響を受けない。
+  // 紙の白はキャンバス（html）に任せ、途中の層（body / 紙）を
+  // 透明にして、z-index: -1 の下敷きを文字の下に見せる。
+  // （body に白を塗ると、負の z-index の fixed 要素より上に
+  //   描かれて下敷きが隠れる）
+  const style = document.createElement("style");
+  style.textContent =
+    "#printfixedgrid{display:none}" +
+    "@media print{" +
+    "#printfixedgrid{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none}" +
+    "html{background:#fff !important}" +
+    "body,.app,.workspace,.viewport,.paperwrap,.paper" +
+    "{background:transparent !important}" +
+    "}";
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "printgrid");
+  svg.setAttribute("viewBox", `0 0 ${f(W)} ${f(H)}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  // fixed の基準はページ余白（@page）の内側。本文の上端は body の
+  // padding-top 15mm の位置なので、そこへ mm で直接合わせる
+  svg.setAttribute(
+    "style",
+    "display:block;position:absolute;top:15mm;right:0;" +
+      `width:${f(W)}mm;height:${f(H)}mm`,
+  );
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", d.join(""));
+  path.setAttribute("fill", "none");
+  // viewBox の 1 単位 = 1mm。配色（夜の画面など）に依らず
+  // 白い紙に薄い黒で刷るため、色も焼き込む
+  path.setAttribute("style", "stroke:rgba(0,0,0,0.22);stroke-width:0.25");
+  svg.appendChild(path);
+
+  div.append(style, svg);
+  document.body.appendChild(div);
 }
 
 function clearPrintGrids(): void {
-  for (const el of Array.from(paper.querySelectorAll("svg.printgrid"))) el.remove();
-  for (const p of Array.from(paper.children) as HTMLElement[]) {
-    if (p.tagName !== "P") continue;
-    p.style.removeProperty("position");
-    p.style.removeProperty("z-index");
-    p.style.removeProperty("min-block-size");
-  }
+  document.getElementById("printfixedgrid")?.remove();
 }
 
 /**
@@ -548,9 +537,10 @@ function printDiagnostics(): void {
   const rows = paras.map((p, i) => {
     const lh = parseFloat(getComputedStyle(p).lineHeight);
     const w = p.getBoundingClientRect().width;
-    const svg = p.querySelector("svg.printgrid");
-    return `p${i}: w=${w.toFixed(1)} lh=${lh.toFixed(2)} lines=${Math.round(w / lh)} vb=${svg?.getAttribute("viewBox") ?? "-"}`;
+    return `p${i}: w=${w.toFixed(1)} lh=${lh.toFixed(2)} lines=${Math.round(w / lh)}`;
   });
+  const grid = document.querySelector("#printfixedgrid svg");
+  rows.push(`fixedgrid vb=${grid?.getAttribute("viewBox") ?? "-"}`);
   d.textContent = [
     `DIAG v2 ${matchMedia("print").matches ? "PRINT-LAYOUT" : "SCREEN-LAYOUT"} mode=${paper.dataset.mode ?? "?"}`,
     `dpr=${devicePixelRatio} chars=${layout.chars} cell=${layout.cell} step=${layout.step}`,
