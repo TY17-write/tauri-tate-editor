@@ -152,9 +152,10 @@ export function setSelectionOffsets(paper: HTMLElement, start: number, end: numb
 /**
  * 段落の中身として許される子ノードか。
  *
- * テキストノードのほか、傍線（右）モードが挿す sidemark の span を
- * 認める。これを認めないと、傍線を出すたびに構造が汚れていると
- * 判定され、修復と再描画を延々と繰り返すことになる。
+ * テキストノードのほか、傍線（右）モードが挿す sidemark の span と、
+ * 句読点のぶら下げ（hang.ts）が挿す hang の span を認める。
+ * これを認めないと、印を挿すたびに構造が汚れていると判定され、
+ * 修復と再描画を延々と繰り返すことになる。
  */
 function isCleanChild(n: Node): boolean {
   if (n.nodeType === Node.TEXT_NODE) {
@@ -164,11 +165,9 @@ function isCleanChild(n: Node): boolean {
     // DOM と段落数が食い違う。
     return !NEWLINE.test(n.nodeValue ?? "");
   }
-  return (
-    n.nodeType === Node.ELEMENT_NODE &&
-    (n as Element).tagName === "SPAN" &&
-    (n as Element).classList.contains("sidemark")
-  );
+  if (n.nodeType !== Node.ELEMENT_NODE || (n as Element).tagName !== "SPAN") return false;
+  const cls = (n as Element).classList;
+  return cls.contains("sidemark") || cls.contains("hang");
 }
 
 /** 改行の表記ゆれ。ペーストや読み込みで CRLF や CR が入ることがある。 */

@@ -1,0 +1,233 @@
+<!doctype html>
+<!--
+  開発用の検証ページ。Tauri の IPC を JS でまねて、素のブラウザ
+  （vite dev サーバーだけ）でフロントエンドの挙動を試す。
+
+    npm run dev  →  http://localhost:1420/tp-check.html
+
+  記法はカクヨム相当だけ、解析は空を返す。本体の index.html と
+  同じ id の部品が要るので、index.html の部品を変えたらこちらも
+  合わせること。製品ビルドには入らない（vite build は index.html
+  だけを入口にする）。
+-->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tp-check</title>
+    <script>
+      (() => {
+        let docText = "";
+        const RE_HEAD = /^[＃#]{1,6}/;
+        const RE_ATOM = /(?:[|｜]([^《》|｜]+)《([^《》]+)》)|(?:《《([^》]+?)》》)|(?:([一-鿿々]+)《([^《》]+)》)/g;
+        function pieces(line) {
+          const out = [];
+          const h = line.match(RE_HEAD);
+          let base = 0;
+          if (h) {
+            out.push({ kind: "heading", text: h[0], ruby: "", src: h[0] });
+            base = h[0].length;
+          }
+          let last = base;
+          RE_ATOM.lastIndex = base;
+          let m;
+          while ((m = RE_ATOM.exec(line))) {
+            if (m.index < base) continue;
+            if (m.index > last) {
+              const t = line.slice(last, m.index);
+              out.push({ kind: "text", text: t, ruby: "", src: t });
+            }
+            if (m[3] !== undefined) out.push({ kind: "emphasis", text: m[3], ruby: "", src: m[0] });
+            else out.push({ kind: "ruby", text: m[1] ?? m[4], ruby: m[2] ?? m[5], src: m[0] });
+            last = m.index + m[0].length;
+          }
+          if (last < line.length) {
+            const t = line.slice(last);
+            out.push({ kind: "text", text: t, ruby: "", src: t });
+          }
+          return out;
+        }
+        const handlers = {
+          set_text: ({ text }) => {
+            docText = text;
+            return text.split("\n").map((t, i) => ({ id: { slot: i, gen: 1 }, text: t }));
+          },
+          update_para: () => true,
+          analyze: () => [],
+          analyze_pending: () => [],
+          get_text: () => docText,
+          char_count: () => docText.length,
+          notation_forms: () => ({ ruby: "|{0}《{1}》", emphasis: "《《{0}》》" }),
+          preview_pieces: () => docText.split("\n").map(pieces),
+          line_pieces: ({ line }) => pieces(line),
+          toggle_emphasis: () => null,
+          current_path: () => null,
+          list_fonts: () => [
+            { name: "Meiryo", label: "メイリオ" },
+            { name: "BIZ UDPMincho", label: "BIZ UDP明朝" },
+            { name: "MS Mincho", label: "ＭＳ 明朝" },
+            { name: "UD Digi Kyokasho N", label: "UD デジタル 教科書体 N" },
+            { name: "Noto Sans JP", label: "Noto Sans JP" },
+          ],
+          style_report: () => ({
+            chars: 0, sentences: 0, avgSentence: 0, maxSentence: 0,
+            dialogueRatio: 0, pos: { adverb: 0, adjective: 0, adjectivalNoun: 0, adnominal: 0 },
+            issues: [],
+          }),
+        };
+        window.__TAURI_INTERNALS__ = {
+          invoke: (cmd, args) => {
+            const h = handlers[cmd];
+            if (!h) return Promise.reject(new Error("mock にないコマンド: " + cmd));
+            return Promise.resolve(h(args ?? {}));
+          },
+          transformCallback: (cb) => cb,
+          unregisterCallback: () => {},
+          convertFileSrc: (p) => p,
+        };
+      })();
+    </script>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div class="ctl">
+          <label>ファイル</label>
+          <div class="row">
+            <button id="btnOpen" type="button">開く</button>
+            <button id="btnSave" type="button">保存</button>
+            <button id="btnSaveAs" type="button">名前を付けて</button>
+            <button id="btnFind" type="button">検索</button>
+            <button id="btnOutline" type="button">目次</button>
+            <button id="btnReport" type="button">文体</button>
+            <button id="btnPrint" type="button">印刷</button>
+          </div>
+        </div>
+        <div class="ctl"><label for="notation">記法</label><select id="notation"></select></div>
+        <div class="ctl">
+          <label>表示</label>
+          <div class="row">
+            <button id="modeSource" class="toggle is-on" type="button">記法</button>
+            <button id="modePreview" class="toggle" type="button">プレビュー</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label for="preset">判型</label>
+          <select id="preset">
+            <option value="20,20">原稿用紙　20字 × 20行</option>
+            <option value="42,16">文庫　42字 × 16行</option>
+            <option value="custom">カスタム</option>
+          </select>
+        </div>
+        <div class="ctl"><label for="chars">字数</label><input type="number" id="chars" min="5" max="80" value="20" /></div>
+        <div class="ctl"><label for="lines">行数</label><input type="number" id="lines" min="3" max="40" value="20" /></div>
+        <div class="ctl"><label for="font">書体</label><select id="font"></select></div>
+        <div class="ctl"><label for="theme">配色</label><select id="theme"></select></div>
+        <div class="ctl">
+          <label for="gridMode">マス目</label>
+          <select id="gridMode">
+            <option value="grid-full">升目</option>
+            <option value="grid-rules">行罫のみ</option>
+            <option value="grid-page">ページ区切りのみ</option>
+            <option value="">なし</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <label for="markStyle">マーカー</label>
+          <select id="markStyle">
+            <option value="h">蛍光ペン（淡い）</option>
+            <option value="h2">蛍光ペン（濃い）</option>
+            <option value="sr">傍線（右）</option>
+            <option value="u">傍線（左）</option>
+            <option value="d">傍線（左・破線）</option>
+            <option value="hu">蛍光ペン＋傍線（左）</option>
+            <option value="c">文字色</option>
+          </select>
+        </div>
+        <div class="ctl pos-toggles">
+          <label>対象品詞</label>
+          <div class="checks">
+            <label><input type="checkbox" data-pos="adverb" checked /> 副詞</label>
+            <label><input type="checkbox" data-pos="adjective" checked /> 形容詞</label>
+            <label><input type="checkbox" data-pos="adjectivalnoun" checked /> 形容動詞</label>
+            <label><input type="checkbox" data-pos="adnominal" /> 連体詞</label>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>&nbsp;</label>
+          <div class="row">
+            <button id="btnMarker" class="toggle is-on" type="button">マーカー表示</button>
+            <button id="btnNormalize" type="button">正規化</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="findbar" id="findbar" hidden>
+        <label class="ctl"><span>検索</span><input type="search" id="findQuery" /></label>
+        <label class="ctl"><span>置換</span><input type="text" id="findReplace" /></label>
+        <div class="row">
+          <button id="findPrev" type="button">前へ</button>
+          <button id="findNext" type="button">次へ</button>
+          <button id="findReplaceOne" type="button">置換</button>
+          <button id="findReplaceAll" type="button">すべて置換</button>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="findRegex" /> 正規表現</label>
+          <label><input type="checkbox" id="findCase" /> 大小を区別</label>
+        </div>
+        <span id="findCount" class="find-count">—</span>
+        <button id="findClose" type="button" class="find-close">×</button>
+      </div>
+
+      <div class="workspace">
+        <aside class="outline" id="outline" hidden>
+          <div class="outline-head"><span>目次</span><button id="outlineClose" type="button">×</button></div>
+          <ul class="outline-list" id="outlineList"></ul>
+          <p class="outline-hint"></p>
+        </aside>
+        <aside class="report" id="report" hidden>
+          <div class="outline-head">
+            <span>文体</span>
+            <button id="reportRefresh" type="button">⟳</button>
+            <button id="reportClose" type="button">×</button>
+          </div>
+          <div class="report-summary" id="reportSummary"></div>
+          <details class="report-settings" id="reportSettings">
+            <summary>しきい値</summary>
+            <div class="settings-body">
+              <label><span>長い文</span><input type="number" id="optLongSentence" min="20" max="1000" step="10" /><span class="unit">字</span></label>
+              <label><span>文末の重なり</span><input type="number" id="optRepeatEndings" min="2" max="10" /><span class="unit">文</span></label>
+              <label><span>近くの繰り返し</span><input type="number" id="optNearbyWindow" min="10" max="400" step="10" /><span class="unit">字</span></label>
+              <label><span>使いすぎ</span><input type="number" id="optOverusePer1000" min="0.5" max="50" step="0.5" /><span class="unit">回/千字</span></label>
+              <label class="stack"><span>数える語</span><textarea id="optOveruseWords" rows="6"></textarea></label>
+              <div class="row"><button id="optReset" type="button">既定に戻す</button></div>
+            </div>
+          </details>
+          <div class="report-filter" id="reportFilter"></div>
+          <ul class="report-list" id="reportList"></ul>
+        </aside>
+        <main class="viewport" id="viewport">
+          <div class="paper grid-full" id="paper" contenteditable="plaintext-only" spellcheck="false"></div>
+        </main>
+      </div>
+
+      <div id="rubyBox" class="rubybox" hidden>
+        <span class="rubybox-base" id="rubyBase"></span>
+        <label for="rubyReading">読み</label>
+        <input id="rubyReading" type="text" />
+        <span class="rubybox-hint">Enter 確定 / Esc 取消</span>
+      </div>
+
+      <footer class="statusbar">
+        <span id="status-file">新規</span>
+        <span id="status-count">—</span>
+        <span id="status-page">—</span>
+        <span id="status-mark">—</span>
+        <span id="status-msg" class="grow"></span>
+      </footer>
+    </div>
+  </body>
+</html>

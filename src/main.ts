@@ -296,6 +296,9 @@ function refreshLayout(): void {
   applyLayout(layout);
   fitCellToViewport();
   checkFontWarning();
+  // 行の長さが変わると折り返しが変わり、句読点のぶら下げの場所も
+  // 変わる。マーカーごと引き直す
+  session.renderMarks();
   updateStatus();
   scheduleSave();
 }

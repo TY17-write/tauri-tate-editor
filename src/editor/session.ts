@@ -22,6 +22,7 @@ import {
   splitAtCaret,
   writeText,
 } from "./dom";
+import { applyHanging } from "./hang";
 import { MarkerLayer } from "./marker";
 import {
   buildPreviewPara,
@@ -319,9 +320,14 @@ export class Session {
     const focused = document.activeElement === this.paper;
     const at = focused ? selectionOffsets(this.paper) : null;
     this.marker.render();
+    // 行末句読点のぶら下げを整える。マーカー（傍線）は段落を組み直す
+    // ことがあるので、必ずそのあとに掛ける。IME 変換中は触らない
+    const hung = this.composing ? false : applyHanging(this.paper);
     // 書き換えていなければ選択は動いていない。戻すとかえって
     // 選び直した範囲（傍点を付けた直後など）を潰してしまう
-    if (at && this.marker.touchedDom) setSelectionOffsets(this.paper, at.start, at.end);
+    if (at && (this.marker.touchedDom || hung)) {
+      setSelectionOffsets(this.paper, at.start, at.end);
+    }
   }
 
   /** 解析を予約する。連続入力中は最後の1回だけ走る。 */
