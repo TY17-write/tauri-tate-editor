@@ -440,7 +440,7 @@ notationSel.value = notation;
 
 /** 記法の書き方と、ルビ・傍点のキーを吹き出しに出す。 */
 function setNotationHint(): void {
-  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点 / Ctrl+I 類義語`;
+  notationSel.title = `${notationInfo(notation).hint}　Ctrl+R ルビ / Ctrl+B 傍点 / Ctrl+Q 類義語`;
 }
 setNotationHint();
 
@@ -599,6 +599,16 @@ function closeSynBox(): void {
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => void openSynBox());
 }
+
+/* ---------- ヘルプ ---------- */
+const helpPanel = $<HTMLElement>("helpPanel");
+
+function toggleHelp(show?: boolean): void {
+  helpPanel.hidden = !(show ?? helpPanel.hidden);
+}
+
+$<HTMLButtonElement>("btnHelp").addEventListener("click", () => toggleHelp());
+$<HTMLButtonElement>("helpClose").addEventListener("click", () => toggleHelp(false));
 
 /**
  * ルビと傍点のコマンドを走らせて、結果を知らせる。
@@ -1062,9 +1072,17 @@ function jumpToIssue(issue: Issue, li: HTMLElement): void {
 // paper は undo 履歴を捨てるときに作り直されるので、
 // 要素に直接ではなく document で受けて中身かどうかで判定する。
 document.addEventListener("pointerdown", (e) => {
-  if (paper.contains(e.target as Node)) clearIssueHighlight();
-  // 類義語の小窓は、外を突いたら閉じる
-  if (!synBox.hidden && !synBox.contains(e.target as Node)) closeSynBox();
+  const t = e.target as Node;
+  if (paper.contains(t)) clearIssueHighlight();
+  // 類義語の小窓とヘルプは、外を突いたら閉じる
+  if (!synBox.hidden && !synBox.contains(t)) closeSynBox();
+  if (
+    !helpPanel.hidden &&
+    !helpPanel.contains(t) &&
+    !(t instanceof Element && t.closest("#btnHelp"))
+  ) {
+    toggleHelp(false);
+  }
 });
 
 async function refreshReport(): Promise<void> {
@@ -1257,12 +1275,12 @@ window.addEventListener("keydown", (e) => {
       void runNotationCommand(() => session.toggleEmphasis());
       return;
     }
-    if (k === "i" || k === "t") {
+    if (k === "q" || k === "i" || k === "t") {
       // 類義語。キャレット位置（または選択範囲）の語を引く。
-      // 主は Ctrl+I（言い換え）。Ctrl+T は WebView2 がブラウザ側の
-      // アクセラレータ（タブ操作）として食ってしまい、ページに
-      // 届かない環境がある。素のブラウザでは効くので残しておく。
-      // Ctrl+I 既定の斜体もここで止まる
+      // 主は Ctrl+Q（左手だけで届く）。Ctrl+I も生かしてある。
+      // Ctrl+T は WebView2 がブラウザ側のアクセラレータ（タブ操作）
+      // として食ってしまい、ページに届かない環境がある。素の
+      // ブラウザでは効くので残しておく。Ctrl+I 既定の斜体も止まる
       e.preventDefault();
       void openSynBox();
       return;
@@ -1287,10 +1305,15 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape") {
-    // 類義語の小窓がいちばん手前。次に検索バー、最後に強調
+    // 類義語の小窓がいちばん手前。次にヘルプ、検索バー、最後に強調
     if (!synBox.hidden) {
       e.preventDefault();
       closeSynBox();
+      return;
+    }
+    if (!helpPanel.hidden) {
+      e.preventDefault();
+      toggleHelp(false);
       return;
     }
     // 検索バーが開いていればそちらを優先し、次の Esc で強調を解く

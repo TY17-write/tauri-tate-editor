@@ -98,7 +98,7 @@
           <div class="row">
             <button id="btnMarker" class="toggle is-on" type="button">マーカー表示</button>
             <button id="btnNormalize" type="button" title="ダーシ U+2014 と半角英数を全角に寄せます">正規化</button>
-            <button id="btnSynonym" type="button" title="Ctrl+I　キャレット位置の語の類義語">類語</button>
+            <button id="btnSynonym" type="button" title="Ctrl+Q　キャレット位置の語の類義語">類語</button>
           </div>
         </div>
       </header>
@@ -212,12 +212,66 @@
         <span class="rubybox-hint">クリックで置き換え / Esc 閉じる</span>
       </div>
 
+      <!-- 操作方法の一覧。ステータスバーの「ヘルプ」で開く -->
+      <div id="helpPanel" class="helppanel" hidden>
+        <div class="helppanel-head">
+          <span>操作方法</span>
+          <button id="helpClose" type="button" title="Esc でも閉じます">×</button>
+        </div>
+        <div class="helppanel-body">
+          <section>
+            <h3>ファイル</h3>
+            <dl>
+              <dt>Ctrl+O</dt><dd>開く</dd>
+              <dt>Ctrl+S</dt><dd>保存</dd>
+              <dt>Ctrl+Shift+S</dt><dd>名前を付けて保存</dd>
+              <dt>Ctrl+P</dt><dd>印刷（PDF は「PDF として保存」）</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>編集</h3>
+            <dl>
+              <dt>Ctrl+Z / Ctrl+Y</dt><dd>元に戻す / やり直す</dd>
+              <dt>Ctrl+F / Ctrl+H</dt><dd>検索 / 置換</dd>
+              <dt>F3 / Shift+F3</dt><dd>次を検索 / 前を検索</dd>
+              <dt>正規化ボタン</dt><dd>ダーシと半角英数を全角に寄せる</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>ルビ・傍点・類語</h3>
+            <dl>
+              <dt>Ctrl+R</dt><dd>選択した文字にルビ（読みのクリックで直す。読みを空にすると外れる）</dd>
+              <dt>Ctrl+B</dt><dd>選択した文字に傍点を付ける / 外す</dd>
+              <dt>Ctrl+Q</dt><dd>キャレット位置の語の類義語（クリックで置き換え）</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>表示・移動</h3>
+            <dl>
+              <dt>Ctrl+E</dt><dd>記法とプレビューの切り替え</dd>
+              <dt>Ctrl+G</dt><dd>目次（行頭に ＃ で見出し。＃の数で階層）</dd>
+              <dt>ホイール / PageUp・Down</dt><dd>ページ送り</dd>
+              <dt>Ctrl+Home / Ctrl+End</dt><dd>先頭へ / 末尾へ</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>覚えておくと便利</h3>
+            <dl>
+              <dt>削除の作法</dt><dd>ルビ・傍点・見出し記号は、削除するとまず注記だけが外れて文字が残る。もう一度消すと文字が消える</dd>
+              <dt>行末の句読点</dt><dd>升の外へぶら下がる。書いている場所の近くでは一時的に解ける</dd>
+              <dt>文体パネル</dt><dd>長い文・文末の重なり・使いすぎ・表記ゆれを指摘</dd>
+            </dl>
+          </section>
+        </div>
+      </div>
+
       <footer class="statusbar">
         <span id="status-file">新規</span>
         <span id="status-count">—</span>
         <span id="status-page">—</span>
         <span id="status-mark">—</span>
         <span id="status-msg" class="grow"></span>
+        <button id="btnHelp" type="button" title="操作方法の一覧">ヘルプ</button>
       </footer>
     </div>
   </body>

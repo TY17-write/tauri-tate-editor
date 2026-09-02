@@ -1011,14 +1011,16 @@ button.toggle.is-on {
   z-index: 40;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-inline-size: 340px;
-  padding: 8px 10px;
+  gap: 8px;
+  /* WordNet を重ねてから候補が多い。広めに取り、あふれたら
+     一覧の側をスクロールさせる */
+  max-inline-size: min(640px, calc(100vw - 32px));
+  padding: 10px 14px;
   background: var(--ui-panel);
   border: 1px solid var(--ui-border);
   border-radius: 6px;
   box-shadow: 0 6px 18px var(--ui-shadow);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ui-sub);
 }
 .synbox[hidden] {
@@ -1026,6 +1028,7 @@ button.toggle.is-on {
 }
 .synbox-head {
   color: var(--ui-text);
+  font-size: 14px;
 }
 .synbox-head span {
   font-weight: 600;
@@ -1033,22 +1036,22 @@ button.toggle.is-on {
 .synbox-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
   align-items: center;
-  max-block-size: 180px;
+  max-block-size: min(340px, 50vh);
   overflow-y: auto;
 }
 .synbox-list button {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 11px;
 }
 /* 種類の見出し（言い換え / 同義 / 近い意味）。行を折って先頭に出す */
 .syn-label {
   flex-basis: 100%;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ui-sub);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .syn-label:first-child {
   margin-top: 0;
@@ -1059,6 +1062,72 @@ button.toggle.is-on {
   block-size: 14px;
   background: var(--ui-border);
   margin: 0 3px;
+}
+
+/* ---------- ヘルプ ---------- */
+.helppanel {
+  position: fixed;
+  z-index: 30;
+  inset-inline: 0;
+  bottom: 34px; /* ステータスバーのすぐ上 */
+  margin: 0 auto;
+  max-inline-size: 980px;
+  max-block-size: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -6px 24px var(--ui-shadow);
+}
+.helppanel[hidden] {
+  display: none;
+}
+.helppanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: 13px;
+  color: var(--ui-text);
+}
+.helppanel-head button {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 8px;
+  color: var(--ui-sub);
+}
+.helppanel-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 4px 24px;
+  padding: 10px 16px 14px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+.helppanel-body h3 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: var(--ui-accent);
+}
+.helppanel-body dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(7em, auto) 1fr;
+  gap: 3px 10px;
+}
+.helppanel-body dt {
+  color: var(--ui-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.helppanel-body dd {
+  margin: 0;
+  color: var(--ui-sub);
+  line-height: 1.6;
 }
 
 /* ---------- ステータスバー ---------- */

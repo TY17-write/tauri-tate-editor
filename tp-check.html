@@ -247,12 +247,30 @@
         <span class="rubybox-hint">クリックで置き換え / Esc 閉じる</span>
       </div>
 
+      <div id="helpPanel" class="helppanel" hidden>
+        <div class="helppanel-head">
+          <span>操作方法</span>
+          <button id="helpClose" type="button">×</button>
+        </div>
+        <div class="helppanel-body">
+          <section>
+            <h3>ルビ・傍点・類語</h3>
+            <dl>
+              <dt>Ctrl+R</dt><dd>ルビ</dd>
+              <dt>Ctrl+B</dt><dd>傍点</dd>
+              <dt>Ctrl+Q</dt><dd>類義語</dd>
+            </dl>
+          </section>
+        </div>
+      </div>
+
       <footer class="statusbar">
         <span id="status-file">新規</span>
         <span id="status-count">—</span>
         <span id="status-page">—</span>
         <span id="status-mark">—</span>
         <span id="status-msg" class="grow"></span>
+        <button id="btnHelp" type="button">ヘルプ</button>
       </footer>
     </div>
   </body>
