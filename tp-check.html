@@ -18,6 +18,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tp-check</title>
     <script>
+      // 検証用: ?chars=40&lines=16 のように判型を差し込める
+      (() => {
+        const q = new URLSearchParams(location.search);
+        if (q.has("chars")) {
+          const s = {
+            layout: { chars: Number(q.get("chars")), lines: Number(q.get("lines") ?? 16),
+              cell: 20, step: 34, font: 'TateHalfMincho, "MS 明朝", "MS Mincho", serif' },
+            preset: "custom", grid: "grid-full", markStyle: "h", markerOn: true,
+            pos: ["adverb"], preview: false, theme: q.get("theme") ?? "light",
+          };
+          localStorage.setItem("tate-editor.settings", JSON.stringify(s));
+        }
+      })();
+    </script>
+    <script>
       (() => {
         let docText = "";
         const RE_HEAD = /^[＃#]{1,6}/;

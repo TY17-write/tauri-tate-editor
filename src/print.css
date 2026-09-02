@@ -129,11 +129,16 @@ body {
    clone でもページの後半で崩れが残った。分割された要素の背景の
    描画は信用できない。
 
-   そこで印刷前に、main.ts がページ 1 枚ぶんの大きさの下敷き
-   （.printgrid）をページ数だけ .paperwrap に並べる。1 枚の下敷きは
-   ページをまたがないので分割されず、背景は画面と同じに描かれる。
-   位置と大きさ（mm）は main.ts が入れる。ページ区切りの紅線は
-   印刷では物理のページがその役目なので描かない。
+   さらに、分割を避けた下敷き要素でも、グラデーションや SVG タイルの
+   「敷き詰め」が周期 2 倍に化ける（字数が多く升が小さいときに顕著。
+   実測）。背景の絵はどれも信用できない。
+
+   そこで印刷前に、main.ts がページ 1 枚ぶんの下敷き（.printgrid）を
+   ページ数だけ .paperwrap に並べ、罫線はその中の**インライン SVG の
+   path** で引く。ふつうの DOM 描画なのでベクタのまま PDF に乗り、
+   どの大きさでも崩れない。位置と大きさ（mm）は main.ts が入れる。
+   ページ区切りの紅線は、印刷では物理のページがその役目なので
+   描かない。
    ============================================================ */
 
 .paperwrap {
@@ -160,47 +165,6 @@ body {
   pointer-events: none !important;
   print-color-adjust: exact !important;
   -webkit-print-color-adjust: exact !important;
-}
-
-/* 升目。画面の .grid-full と同じ 3 層（ページ区切りの層だけ無い）。
-   ここを変えるときは styles.css の .grid-full も揃えること */
-/* 線の太さ。画面の 1px にあたる。印刷では背景がラスタ化される
-   ため、細すぎると線が飛び飛びに抜ける（実測）。0.3mm あれば
-   どの解像度でも必ず 1 ドット以上に掛かる */
-.printgrid {
-  --pline: 0.3mm;
-}
-
-.printgrid.pg-full {
-  background-image:
-    repeating-linear-gradient(
-      to left,
-      transparent 0 var(--gutter),
-      var(--rule) var(--gutter) calc(var(--gutter) + var(--pline)),
-      transparent calc(var(--gutter) + var(--pline)) calc(var(--gutter) + var(--cell)),
-      var(--rule) calc(var(--gutter) + var(--cell)) calc(var(--gutter) + var(--cell) + var(--pline)),
-      transparent calc(var(--gutter) + var(--cell) + var(--pline)) var(--step)
-    ),
-    repeating-linear-gradient(
-      to left,
-      var(--paper) 0 var(--gutter),
-      transparent var(--gutter) calc(var(--gutter) + var(--cell)),
-      var(--paper) calc(var(--gutter) + var(--cell)) var(--step)
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      var(--rule) 0 var(--pline),
-      transparent var(--pline) var(--cell)
-    ) !important;
-}
-
-/* 行罫のみ */
-.printgrid.pg-rules {
-  background-image: repeating-linear-gradient(
-    to left,
-    var(--rule) 0 var(--pline),
-    transparent var(--pline) var(--step)
-  ) !important;
 }
 
 .app {
