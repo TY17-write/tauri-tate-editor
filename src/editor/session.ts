@@ -172,6 +172,31 @@ export class Session {
     this.paper = paper;
     this.marker = new MarkerLayer(paper);
     this.bind();
+
+    // ぶら下げの span（letter-spacing: -1em）の中にキャレットを
+    // 置かせない。中に入ったまま書くと、打った文字や IME の変換中
+    // 文字列まで字送り 0 を継いで、マスに載らなくなる。
+    // IME は変換を始めた時点のキャレット位置へ挿入するので、
+    // 立った瞬間に外へ出しておけば足りる。変換が始まってからは
+    // 選択を動かすと変換そのものが壊れるため、触らない。
+    // paper は作り直されることがあるので document で受ける。
+    document.addEventListener("selectionchange", () => {
+      if (this.composing) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+      const range = sel.getRangeAt(0);
+      if (!this.paper.contains(range.startContainer)) return;
+      const hang = range.startContainer.parentElement?.closest?.(".hang");
+      if (!hang?.parentNode) return;
+      const idx = Array.from(hang.parentNode.childNodes).indexOf(hang);
+      const r = document.createRange();
+      // 字の手前（offset 0）を指していたら span の前、そうでなければ後ろへ
+      const before = range.startOffset === 0;
+      r.setStart(hang.parentNode, before ? idx : idx + 1);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    });
   }
 
   /** 本文を入れている要素。作り直されることがあるので都度取得すること。 */
