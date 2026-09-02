@@ -44,10 +44,6 @@
 }
 
 :root {
-  /* 印刷診断用の目印。印刷した紙面の DIAG 行に出る。
-     これが見えなければ、この print.css が当たっていない */
-  --printcss-v: " / print.css: v3" !important;
-
   /* A4 横。縦書きでは「行の長さ」に当たるのが用紙の高さ */
   --print-page-inline: 210mm !important;
   --print-margin: 15mm !important;
