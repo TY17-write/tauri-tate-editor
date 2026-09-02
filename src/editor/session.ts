@@ -173,30 +173,60 @@ export class Session {
     this.marker = new MarkerLayer(paper);
     this.bind();
 
-    // ぶら下げの span（letter-spacing: -1em）の中にキャレットを
-    // 置かせない。中に入ったまま書くと、打った文字や IME の変換中
-    // 文字列まで字送り 0 を継いで、マスに載らなくなる。
-    // IME は変換を始めた時点のキャレット位置へ挿入するので、
-    // 立った瞬間に外へ出しておけば足りる。変換が始まってからは
-    // 選択を動かすと変換そのものが壊れるため、触らない。
-    // paper は作り直されることがあるので document で受ける。
-    document.addEventListener("selectionchange", () => {
-      if (this.composing) return;
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
-      const range = sel.getRangeAt(0);
-      if (!this.paper.contains(range.startContainer)) return;
-      const hang = range.startContainer.parentElement?.closest?.(".hang");
-      if (!hang?.parentNode) return;
-      const idx = Array.from(hang.parentNode.childNodes).indexOf(hang);
-      const r = document.createRange();
-      // 字の手前（offset 0）を指していたら span の前、そうでなければ後ろへ
-      const before = range.startOffset === 0;
-      r.setStart(hang.parentNode, before ? idx : idx + 1);
-      r.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(r);
-    });
+    // キャレットがぶら下げの span（letter-spacing: -1em）に触れたら、
+    // その span をほどく。paper は作り直されることがあるので
+    // document で受ける。
+    document.addEventListener("selectionchange", () => this.releaseHangAtCaret());
+  }
+
+  /**
+   * キャレットがぶら下げの span の中・直後に立ったら、span をほどく。
+   *
+   * span の中や直後から書くと、Chromium は編集位置を正規化して
+   * 文字を span の中へ併合することがあり、打った文字や IME の
+   * 変換中文字列まで letter-spacing: -1em を継いでマスに載らなく
+   * なる（実害があった）。キャレットを外へ動かして防ごうとしても、
+   * 空のテキストノードや要素の境界は「見えない位置」として正規化で
+   * span の中へ戻されてしまい、防ぎきれない。
+   *
+   * そこで、キャレットが寄った時点で span そのものをほどく。
+   * その場では一時的に追い出しの見た目へ戻るが、入力は素の本文で
+   * 行われる。キャレットが離れて同期が走れば、ぶら下げは掛け直される
+   * （hang.ts）。IME の変換が始まってからは DOM を触ると変換が
+   * 壊れるので、何もしない（変換の挿入先は開始時点の位置で決まる
+   * ため、立った瞬間にほどいておけば足りる）。
+   */
+  private releaseHangAtCaret(): void {
+    if (this.composing) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const c = range.startContainer;
+    if (!this.paper.contains(c)) return;
+
+    // span の中か、直後（要素の境界・次のテキストノードの先頭）か
+    let hang: HTMLElement | null = null;
+    const el = c.nodeType === Node.ELEMENT_NODE ? (c as HTMLElement) : c.parentElement;
+    const inside = (el?.closest?.(".hang") ?? null) as HTMLElement | null;
+    if (inside) {
+      hang = inside;
+    } else if (c.nodeType === Node.ELEMENT_NODE && range.startOffset > 0) {
+      const prev = c.childNodes[range.startOffset - 1];
+      if (prev instanceof HTMLElement && prev.classList.contains("hang")) hang = prev;
+    } else if (c.nodeType === Node.TEXT_NODE && range.startOffset === 0) {
+      const prev = c.previousSibling;
+      if (prev instanceof HTMLElement && prev.classList.contains("hang")) hang = prev;
+    }
+    const parent = hang?.parentNode;
+    if (!hang || !parent) return;
+
+    // キャレットは文字数で覚えてから、ほどいて戻す
+    const at = caretOffset(this.paper);
+    const para = paraOf(this.paper, hang);
+    while (hang.firstChild) parent.insertBefore(hang.firstChild, hang);
+    parent.removeChild(hang);
+    para?.normalize();
+    if (at !== null) setCaretOffset(this.paper, at);
   }
 
   /** 本文を入れている要素。作り直されることがあるので都度取得すること。 */

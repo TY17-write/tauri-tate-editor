@@ -84,7 +84,7 @@ function pointOf(paper: HTMLElement, offset: number): { node: Node; offset: numb
       let node: Node | null;
       while ((node = walker.nextNode())) {
         const l = (node as Text).length;
-        if (acc + l >= remain) return { node, offset: remain - acc };
+        if (acc + l >= remain) return dodgeHang(node as Text, remain - acc);
         acc += l;
       }
       return { node: el, offset: el.childNodes.length };
@@ -94,6 +94,19 @@ function pointOf(paper: HTMLElement, offset: number): { node: Node; offset: numb
   // 行き過ぎたら末尾へ
   const last = paper.lastElementChild;
   return last ? { node: last, offset: last.childNodes.length } : null;
+}
+
+/**
+ * ぶら下げの span（hang.ts）の中を指す位置は、span の外の境界へ
+ * 寄せる。中へキャレットを戻すと、そこから書いた文字が span の
+ * letter-spacing: -1em を継いでマスに載らなくなる。
+ */
+function dodgeHang(node: Text, offset: number): { node: Node; offset: number } {
+  const hang = node.parentElement?.closest?.(".hang");
+  const parent = hang?.parentNode;
+  if (!hang || !parent) return { node, offset };
+  const idx = Array.from(parent.childNodes).indexOf(hang);
+  return { node: parent, offset: offset === 0 ? idx : idx + 1 };
 }
 
 /** キャレット位置を、本文先頭からの文字数で返す。 */
