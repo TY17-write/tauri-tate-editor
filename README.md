@@ -558,10 +558,17 @@ Rust は UTF-8 バイト、JavaScript は UTF-16 コード単位で文字列を�
 
 MIT License（[LICENSE](LICENSE)）。
 
-形態素解析の辞書として UniDic を実行ファイルに埋め込んでいます。UniDic は
-BSD 3-Clause で提供されており、再配布には著作権表示の同梱が求められます。
-その表示と、主な依存ライブラリの一覧は
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にまとめてあります。
+実行ファイルには次の辞書データを埋め込んでいます。いずれも再配布に
+著作権表示やライセンス全文の同梱が求められるため、その表示と、主な
+依存ライブラリの一覧を [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+にまとめてあります。
+
+- **SudachiDict**（形態素解析。Apache License 2.0、Works Applications）。
+  UniDic（BSD 3-Clause）と mecab-ipadic-NEologd（Apache License 2.0）の
+  一部を含む
+- **Sudachi 同義語辞書**（類義語の「言い換え」。Apache License 2.0）
+- **日本語 WordNet**（類義語の「同義」「近い意味」。NICT ほかの独自
+  ライセンス。Princeton WordNet 3.0 を土台とする）
 
 ## 作成について
 

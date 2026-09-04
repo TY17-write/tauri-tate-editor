@@ -32,7 +32,7 @@ jobs:
       - name: Rust を用意
         uses: dtolnay/rust-toolchain@stable
 
-      # UniDic を実行ファイルに埋め込むので、依存のビルドが非常に重い。
+      # SudachiDict を実行ファイルに埋め込むので、依存のビルドが非常に重い。
       # キャッシュがないと毎回 15 分以上かかる。
       - name: Rust のビルド結果を使い回す
         uses: Swatinem/rust-cache@v2
